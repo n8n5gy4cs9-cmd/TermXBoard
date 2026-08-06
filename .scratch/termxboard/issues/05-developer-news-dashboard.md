@@ -4,9 +4,9 @@
 
 **Blocked by:** 01 — Launchable TermXBoard shell.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Dashboard shows up to five feed-provided Headlines per News Feed with source and relative publication time.
-- [ ] News refreshes every 15 minutes or manually; failures retain the last successful session results.
-- [ ] Activating a Headline opens its feed-provided URL in the macOS default browser.
-- [ ] RSS and Atom parsing, deduplication, refresh state, and failures have automated tests.
+- [x] Dashboard shows up to five feed-provided Headlines per News Feed with source and relative publication time.
+- [x] News refreshes every 15 minutes or manually; failures retain the last successful session results.
+- [x] Activating a Headline opens its feed-provided URL in the macOS default browser.
+- [x] RSS and Atom parsing, deduplication, refresh state, and failures have automated tests.

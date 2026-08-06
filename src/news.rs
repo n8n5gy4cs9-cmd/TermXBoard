@@ -31,7 +31,7 @@ impl NewsFeed {
         match self {
             Self::HackerNews => "https://hnrss.org/frontpage",
             Self::SimonWillison => "https://simonwillison.net/tags/llms.atom",
-            Self::GithubBlog => "https://github.com/blog.atom",
+            Self::GithubBlog => "https://github.blog/feed/",
         }
     }
 
@@ -340,7 +340,10 @@ pub fn parse_feed(
         };
         let Some(url) = entry
             .links
-            .first()
+            .iter()
+            .find(|link| link.rel.as_deref() == Some("alternate"))
+            .or_else(|| entry.links.iter().find(|link| link.rel.is_none()))
+            .or_else(|| entry.links.first())
             .map(|link| link.href.trim().to_string())
             .filter(|url| !url.is_empty())
         else {

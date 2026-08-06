@@ -53,3 +53,23 @@ fn malformed_feeds_and_entries_without_required_feed_data_are_rejected() {
     let missing_time = r#"<rss version="2.0"><channel><title>x</title><item><title>No time</title><link>https://example.com</link></item></channel></rss>"#;
     assert!(parse_feed(NewsFeed::GithubBlog, missing_time, now).is_err());
 }
+
+#[test]
+fn atom_prefers_article_link_over_self_link() {
+    let xml = r#"<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom"><title>Feed</title>
+      <entry><title>Article</title>
+        <link rel="self" href="https://example.com/feed/entry.xml"/>
+        <link rel="alternate" href="https://example.com/article"/>
+        <published>2026-08-06T09:00:00Z</published>
+      </entry></feed>"#;
+    let now = Utc.with_ymd_and_hms(2026, 8, 6, 12, 0, 0).unwrap();
+
+    let headlines = parse_feed(NewsFeed::SimonWillison, xml, now).expect("valid Atom");
+
+    assert_eq!(headlines[0].url, "https://example.com/article");
+}
+
+#[test]
+fn configured_github_blog_source_is_the_current_rss_feed() {
+    assert_eq!(NewsFeed::GithubBlog.url(), "https://github.blog/feed/");
+}
