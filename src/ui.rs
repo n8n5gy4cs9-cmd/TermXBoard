@@ -24,6 +24,7 @@ use crate::{
     preferences::{PreferencesStore, SaveOutcome, Theme},
     screen_mode,
     telemetry::{LedState, MacTelemetrySource, TelemetryMonitor, TelemetryView},
+    weather::{WeatherLed, WeatherMonitor, WeatherReport, WeatherView, WttrWeatherClient},
 };
 
 #[derive(Clone, Copy)]
@@ -110,9 +111,16 @@ fn run_loop(
         Duration::from_secs(3),
         Instant::now(),
     );
+    let mut weather = WeatherMonitor::new(
+        WttrWeatherClient::new(),
+        Duration::from_secs(15 * 60),
+        Instant::now(),
+    );
     loop {
-        telemetry.tick(Instant::now());
-        terminal.draw(|frame| render(frame, &app, telemetry.view()))?;
+        let now = Instant::now();
+        telemetry.tick(now);
+        weather.tick(now, &app.preferences().city);
+        terminal.draw(|frame| render(frame, &app, telemetry.view(), weather.view()))?;
         if !event::poll(Duration::from_millis(100))? {
             continue;
         }
@@ -136,6 +144,9 @@ fn run_loop(
         if app.handle_key(command) == AppAction::Quit {
             return Ok(());
         }
+        if app.take_weather_refresh_requested() {
+            weather.refresh_now(Instant::now());
+        }
         if let Some(preferences) = app.take_preferences_changed() {
             match store.save(&preferences) {
                 SaveOutcome::Saved => app.set_warning(None),
@@ -145,14 +156,14 @@ fn run_loop(
     }
 }
 
-pub fn render(frame: &mut Frame, app: &AppState, telemetry: &TelemetryView) {
+pub fn render(frame: &mut Frame, app: &AppState, telemetry: &TelemetryView, weather: &WeatherView) {
     let area = frame.area();
     let colors = palette(app.preferences().theme);
     if screen_mode(area.width, area.height) == ScreenMode::Resize {
         render_resize(frame, area, colors);
         return;
     }
-    render_dashboard(frame, area, app, telemetry, colors);
+    render_dashboard(frame, area, app, telemetry, weather, colors);
     if app.is_help_visible() {
         render_help(frame, centered_rect(58, 14, area), colors);
     } else if app.is_first_run() {
@@ -193,6 +204,7 @@ fn render_dashboard(
     area: Rect,
     app: &AppState,
     telemetry: &TelemetryView,
+    weather: &WeatherView,
     colors: Palette,
 ) {
     let rows = Layout::default()
@@ -222,7 +234,10 @@ fn render_dashboard(
         .split(rows[1]);
     render_telemetry(frame, columns[0], telemetry, colors);
     clock(frame, columns[1], colors);
-    standby(frame, columns[2], " PROJECT ", "NO PROJECT\nLOADED", colors);
+    let right = Layout::vertical([Constraint::Percentage(68), Constraint::Percentage(32)])
+        .split(columns[2]);
+    render_weather(frame, right[0], weather, colors);
+    standby(frame, right[1], " PROJECT ", "NO PROJECT LOADED", colors);
 
     let footer = Paragraph::new(Line::from(vec![
         Span::styled(" ● ", Style::default().fg(Color::Green)),
@@ -232,6 +247,8 @@ fn render_dashboard(
         Span::raw(" HELP   "),
         Span::styled("s", bold(colors.accent)),
         Span::raw(" SETTINGS   "),
+        Span::styled("w", bold(colors.accent)),
+        Span::raw(" WEATHER   "),
         Span::styled("q", bold(colors.accent)),
         Span::raw(" QUIT"),
     ]))
@@ -286,6 +303,70 @@ fn render_telemetry(frame: &mut Frame, area: Rect, telemetry: &TelemetryView, co
     }
 }
 
+fn render_weather(frame: &mut Frame, area: Rect, weather: &WeatherView, colors: Palette) {
+    let led = match weather.led() {
+        WeatherLed::Green => Color::Green,
+        WeatherLed::Orange => Color::Rgb(255, 165, 0),
+        WeatherLed::Red => Color::Red,
+    };
+    let mut lines = vec![Line::from(vec![
+        Span::styled("● ", Style::default().fg(led)),
+        Span::styled(
+            match weather {
+                WeatherView::Loading => "LOADING",
+                WeatherView::Ready { .. } => "ONLINE",
+                WeatherView::Error {
+                    last_good: Some(_), ..
+                } => "STALE",
+                WeatherView::Error {
+                    last_good: None, ..
+                } => "ERROR",
+            },
+            bold(led),
+        ),
+    ])];
+    match weather {
+        WeatherView::Loading => lines.push(Line::from("Loading weather…")),
+        WeatherView::Ready { city, report } => weather_lines(&mut lines, city, report, colors),
+        WeatherView::Error { message, last_good } => {
+            if let Some((city, report)) = last_good {
+                weather_lines(&mut lines, city, report, colors);
+            }
+            lines.push(Line::from(Span::styled(
+                message.as_str(),
+                Style::default().fg(Color::Red),
+            )));
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(lines)
+            .alignment(Alignment::Center)
+            .wrap(Wrap { trim: true })
+            .block(bordered(colors.secondary).title(" WEATHER // 15m ")),
+        area,
+    );
+}
+
+fn weather_lines<'a>(
+    lines: &mut Vec<Line<'a>>,
+    city: &'a str,
+    report: &WeatherReport,
+    colors: Palette,
+) {
+    let updated: chrono::DateTime<Local> = report.updated_at.into();
+    lines.extend([
+        Line::from(Span::styled(city, bold(colors.primary))),
+        Line::from(report.condition.clone()),
+        Line::from(format!(
+            "{}°C  //  Feels {}°C",
+            report.temperature_c, report.feels_like_c
+        )),
+        Line::from(format!("Humidity {}%", report.humidity_percent)),
+        Line::from(format!("Wind {} km/h", report.wind_kmh)),
+        Line::from(format!("Updated {}", updated.format("%H:%M"))),
+    ]);
+}
+
 fn clock(frame: &mut Frame, area: Rect, colors: Palette) {
     let now = Local::now();
     let widget = Paragraph::new(vec![
@@ -329,6 +410,7 @@ fn render_help(frame: &mut Frame, area: Rect, colors: Palette) {
         Line::from(""),
         key_line("?", "Toggle this help", colors),
         key_line("s", "Toggle Settings", colors),
+        key_line("w", "Refresh weather", colors),
         key_line("q", "Quit immediately", colors),
     ])
     .alignment(Alignment::Center)

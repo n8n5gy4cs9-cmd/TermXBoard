@@ -63,3 +63,13 @@ fn settings_select_theme_and_reduced_motion() {
     app.handle_key(KeyCommand::Enter);
     assert!(app.preferences().reduced_motion);
 }
+
+#[test]
+fn w_requests_one_manual_weather_refresh() {
+    let mut app = AppState::default();
+
+    app.handle_key(KeyCommand::Character('w'));
+
+    assert!(app.take_weather_refresh_requested());
+    assert!(!app.take_weather_refresh_requested());
+}

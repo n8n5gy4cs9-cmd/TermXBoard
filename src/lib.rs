@@ -3,6 +3,7 @@
 pub mod preferences;
 pub mod telemetry;
 pub mod ui;
+pub mod weather;
 
 pub const MIN_WIDTH: u16 = 110;
 pub const MIN_HEIGHT: u16 = 32;
@@ -77,6 +78,7 @@ pub struct AppState {
     city_untouched: bool,
     city_editing: bool,
     warning: Option<String>,
+    weather_refresh_requested: bool,
 }
 
 impl AppState {
@@ -96,6 +98,7 @@ impl AppState {
             preferences_changed: false,
             city_untouched: true,
             city_editing: false,
+            weather_refresh_requested: false,
         }
     }
 
@@ -140,6 +143,10 @@ impl AppState {
             self.preferences_changed = false;
             self.preferences.clone()
         })
+    }
+
+    pub fn take_weather_refresh_requested(&mut self) -> bool {
+        std::mem::take(&mut self.weather_refresh_requested)
     }
 
     fn commit_city(&mut self) {
@@ -228,6 +235,10 @@ impl AppState {
             KeyCommand::Character('s') => {
                 self.settings_visible = !self.settings_visible;
                 self.help_visible = false;
+                AppAction::Continue
+            }
+            KeyCommand::Character('w') => {
+                self.weather_refresh_requested = true;
                 AppAction::Continue
             }
             KeyCommand::Escape => {
