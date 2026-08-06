@@ -4,9 +4,9 @@
 
 **Blocked by:** None — can start immediately.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Dashboard starts in a modern macOS terminal; `?` shows help and `q` exits immediately.
-- [ ] Terminals below 110×32 show the resize screen and recover automatically.
-- [ ] Start and build commands fail clearly without prerequisites; build produces the executable under `dist/`.
-- [ ] Core launch, input, and size-state behavior has automated tests.
+- [x] Dashboard starts in a modern macOS terminal; `?` shows help and `q` exits immediately.
+- [x] Terminals below 110×32 show the resize screen and recover automatically.
+- [x] Start and build commands fail clearly without prerequisites; build produces the executable under `dist/`.
+- [x] Core launch, input, and size-state behavior has automated tests.
