@@ -249,13 +249,9 @@ fn render_dashboard(
 }
 
 fn render_telemetry(frame: &mut Frame, area: Rect, telemetry: &TelemetryView, colors: Palette) {
-    let inner = bordered(colors.secondary)
-        .title(" SYSTEM TELEMETRY // 3s ")
-        .inner(area);
-    frame.render_widget(
-        bordered(colors.secondary).title(" SYSTEM TELEMETRY // 3s "),
-        area,
-    );
+    let block = bordered(colors.secondary).title(" SYSTEM TELEMETRY // 3s ");
+    let inner = block.inner(area);
+    frame.render_widget(block, area);
     let rows = Layout::vertical([
         Constraint::Percentage(34),
         Constraint::Percentage(33),
@@ -270,7 +266,7 @@ fn render_telemetry(frame: &mut Frame, area: Rect, telemetry: &TelemetryView, co
             let card = &cards[row_index * 2 + column_index];
             let led = match card.led {
                 LedState::Green => Color::Green,
-                LedState::Orange => Color::Yellow,
+                LedState::Orange => Color::Rgb(255, 165, 0),
                 LedState::Red => Color::Red,
             };
             let widget = Paragraph::new(vec![

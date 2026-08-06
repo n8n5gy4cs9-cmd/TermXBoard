@@ -1,20 +1,27 @@
 use std::time::Duration;
 
 use termxboard::telemetry::{
-    LedState, MacTelemetrySource, TelemetrySnapshot, TelemetrySource, TelemetryView,
+    Capacity, LedState, MacTelemetrySource, NetworkActivity, TelemetrySnapshot, TelemetrySource,
+    TelemetryView,
 };
 
 fn snapshot() -> TelemetrySnapshot {
     TelemetrySnapshot {
-        cpu_percent: 42.4,
-        memory_used_bytes: 8 * 1024_u64.pow(3),
-        memory_total_bytes: 16 * 1024_u64.pow(3),
+        cpu_percent: Some(42.4),
+        memory: Some(Capacity {
+            used_bytes: 8 * 1024_u64.pow(3),
+            total_bytes: 16 * 1024_u64.pow(3),
+        }),
         battery_percent: Some(81.6),
-        disk_used_bytes: 250 * 1024_u64.pow(3),
-        disk_total_bytes: 500 * 1024_u64.pow(3),
-        network_received_bytes: 3 * 1024_u64.pow(2),
-        network_transmitted_bytes: 512 * 1024,
-        uptime: Duration::from_secs(2 * 86_400 + 3 * 3_600 + 4 * 60),
+        disk: Some(Capacity {
+            used_bytes: 250 * 1024_u64.pow(3),
+            total_bytes: 500 * 1024_u64.pow(3),
+        }),
+        network: Some(NetworkActivity {
+            received_bytes: 3 * 1024_u64.pow(2),
+            transmitted_bytes: 512 * 1024,
+        }),
+        uptime: Some(Duration::from_secs(2 * 86_400 + 3 * 3_600 + 4 * 60)),
     }
 }
 
@@ -66,7 +73,7 @@ fn macos_source_reports_real_core_metrics() {
         .collect()
         .expect("macOS telemetry");
 
-    assert!(sample.cpu_percent.is_finite());
-    assert!(sample.memory_total_bytes > 0);
-    assert!(sample.disk_total_bytes > 0);
+    assert!(sample.cpu_percent.expect("CPU").is_finite());
+    assert!(sample.memory.expect("memory").total_bytes > 0);
+    assert!(sample.disk.expect("disk").total_bytes > 0);
 }

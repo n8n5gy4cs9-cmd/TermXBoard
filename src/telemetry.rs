@@ -8,16 +8,25 @@ use battery::units::ratio::percent as ratio_percent;
 use sysinfo::{Disks, Networks, System};
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Capacity {
+    pub used_bytes: u64,
+    pub total_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct NetworkActivity {
+    pub received_bytes: u64,
+    pub transmitted_bytes: u64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct TelemetrySnapshot {
-    pub cpu_percent: f32,
-    pub memory_used_bytes: u64,
-    pub memory_total_bytes: u64,
+    pub cpu_percent: Option<f32>,
+    pub memory: Option<Capacity>,
     pub battery_percent: Option<f32>,
-    pub disk_used_bytes: u64,
-    pub disk_total_bytes: u64,
-    pub network_received_bytes: u64,
-    pub network_transmitted_bytes: u64,
-    pub uptime: Duration,
+    pub disk: Option<Capacity>,
+    pub network: Option<NetworkActivity>,
+    pub uptime: Option<Duration>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,7 +47,10 @@ pub struct MetricCard {
 pub enum TelemetryView {
     Loading,
     Ready(TelemetrySnapshot),
-    Error(String),
+    Error {
+        message: String,
+        last_good: Option<TelemetrySnapshot>,
+    },
 }
 
 pub trait TelemetrySource: Send + 'static {
@@ -49,6 +61,7 @@ pub struct MacTelemetrySource {
     system: System,
     disks: Disks,
     networks: Networks,
+    cpu_primed: bool,
 }
 
 impl MacTelemetrySource {
@@ -57,6 +70,7 @@ impl MacTelemetrySource {
             system: System::new_all(),
             disks: Disks::new_with_refreshed_list(),
             networks: Networks::new_with_refreshed_list(),
+            cpu_primed: false,
         }
     }
 
@@ -79,6 +93,10 @@ impl Default for MacTelemetrySource {
 
 impl TelemetrySource for MacTelemetrySource {
     fn collect(&mut self) -> Result<TelemetrySnapshot, String> {
+        if !self.cpu_primed {
+            thread::sleep(sysinfo::MINIMUM_CPU_UPDATE_INTERVAL);
+            self.cpu_primed = true;
+        }
         self.system.refresh_cpu_usage();
         self.system.refresh_memory();
         self.disks.refresh(false);
@@ -98,20 +116,24 @@ impl TelemetrySource for MacTelemetrySource {
             .sum();
 
         let memory_total_bytes = self.system.total_memory();
-        if memory_total_bytes == 0 || disk_total_bytes == 0 {
-            return Err("macOS telemetry is temporarily unavailable".into());
-        }
+        let cpu_percent = self.system.global_cpu_usage();
 
         Ok(TelemetrySnapshot {
-            cpu_percent: self.system.global_cpu_usage(),
-            memory_used_bytes: self.system.used_memory(),
-            memory_total_bytes,
+            cpu_percent: cpu_percent.is_finite().then_some(cpu_percent),
+            memory: (memory_total_bytes > 0).then_some(Capacity {
+                used_bytes: self.system.used_memory(),
+                total_bytes: memory_total_bytes,
+            }),
             battery_percent: Self::battery_percent(),
-            disk_used_bytes: disk_total_bytes.saturating_sub(disk_available_bytes),
-            disk_total_bytes,
-            network_received_bytes,
-            network_transmitted_bytes,
-            uptime: Duration::from_secs(System::uptime()),
+            disk: (disk_total_bytes > 0).then_some(Capacity {
+                used_bytes: disk_total_bytes.saturating_sub(disk_available_bytes),
+                total_bytes: disk_total_bytes,
+            }),
+            network: (!self.networks.is_empty()).then_some(NetworkActivity {
+                received_bytes: network_received_bytes,
+                transmitted_bytes: network_transmitted_bytes,
+            }),
+            uptime: Some(Duration::from_secs(System::uptime())),
         })
     }
 }
@@ -129,6 +151,7 @@ pub struct TelemetryMonitor {
     interval: Duration,
     next_refresh: Instant,
     in_flight: bool,
+    last_good: Option<TelemetrySnapshot>,
 }
 
 impl TelemetryMonitor {
@@ -156,6 +179,7 @@ impl TelemetryMonitor {
             interval,
             next_refresh: now,
             in_flight: false,
+            last_good: None,
         }
     }
 
@@ -167,8 +191,14 @@ impl TelemetryMonitor {
         while let Ok(result) = self.result_receiver.try_recv() {
             self.in_flight = false;
             self.view = match result {
-                Ok(snapshot) => TelemetryView::Ready(snapshot),
-                Err(message) => TelemetryView::Error(message),
+                Ok(snapshot) => {
+                    self.last_good = Some(snapshot);
+                    TelemetryView::Ready(snapshot)
+                }
+                Err(message) => TelemetryView::Error {
+                    message,
+                    last_good: self.last_good,
+                },
             };
         }
         if !self.in_flight && now >= self.next_refresh {
@@ -176,7 +206,10 @@ impl TelemetryMonitor {
                 self.in_flight = true;
                 self.next_refresh = now + self.interval;
             } else {
-                self.view = TelemetryView::Error("telemetry worker stopped".into());
+                self.view = TelemetryView::Error {
+                    message: "telemetry worker stopped".into(),
+                    last_good: self.last_good,
+                };
             }
         }
     }
@@ -203,12 +236,15 @@ impl TelemetryView {
     }
 
     pub fn error(message: impl Into<String>) -> Self {
-        Self::Error(message.into())
+        Self::Error {
+            message: message.into(),
+            last_good: None,
+        }
     }
 
     pub fn error_message(&self) -> Option<&str> {
         match self {
-            Self::Error(message) => Some(message),
+            Self::Error { message, .. } => Some(message),
             _ => None,
         }
     }
@@ -216,7 +252,22 @@ impl TelemetryView {
     pub fn cards(&self) -> Vec<MetricCard> {
         match self {
             Self::Loading => uniform_cards("Loading…", LedState::Orange),
-            Self::Error(_) => uniform_cards("Error", LedState::Red),
+            Self::Error {
+                last_good: Some(snapshot),
+                ..
+            } => ready_cards(*snapshot)
+                .into_iter()
+                .map(|mut card| {
+                    card.led = LedState::Red;
+                    if card.value != "Unavailable" {
+                        card.value.push_str(" (stale)");
+                    }
+                    card
+                })
+                .collect(),
+            Self::Error {
+                last_good: None, ..
+            } => uniform_cards("Error", LedState::Red),
             Self::Ready(snapshot) => ready_cards(*snapshot),
         }
     }
@@ -235,32 +286,43 @@ fn uniform_cards(value: &str, led: LedState) -> Vec<MetricCard> {
 
 fn ready_cards(snapshot: TelemetrySnapshot) -> Vec<MetricCard> {
     vec![
-        available("CPU", format!("{:.0}%", snapshot.cpu_percent)),
-        available(
-            "MEMORY",
-            format_capacity_pair(snapshot.memory_used_bytes, snapshot.memory_total_bytes),
-        ),
+        match snapshot.cpu_percent {
+            Some(value) => available("CPU", format!("{value:.0}%")),
+            None => unavailable("CPU"),
+        },
+        match snapshot.memory {
+            Some(value) => available(
+                "MEMORY",
+                format_capacity_pair(value.used_bytes, value.total_bytes),
+            ),
+            None => unavailable("MEMORY"),
+        },
         match snapshot.battery_percent {
             Some(percent) => available("BATTERY", format!("{percent:.0}%")),
-            None => MetricCard {
-                label: "BATTERY",
-                value: "Unavailable".into(),
-                led: LedState::Red,
-            },
+            None => unavailable("BATTERY"),
         },
-        available(
-            "DISK",
-            format_capacity_pair(snapshot.disk_used_bytes, snapshot.disk_total_bytes),
-        ),
-        available(
-            "NETWORK",
-            format!(
-                "↓ {}  ↑ {}",
-                format_bytes(snapshot.network_received_bytes),
-                format_bytes(snapshot.network_transmitted_bytes)
+        match snapshot.disk {
+            Some(value) => available(
+                "DISK",
+                format_capacity_pair(value.used_bytes, value.total_bytes),
             ),
-        ),
-        available("UPTIME", format_uptime(snapshot.uptime)),
+            None => unavailable("DISK"),
+        },
+        match snapshot.network {
+            Some(value) => available(
+                "NETWORK",
+                format!(
+                    "↓ {}  ↑ {}",
+                    format_bytes(value.received_bytes),
+                    format_bytes(value.transmitted_bytes)
+                ),
+            ),
+            None => unavailable("NETWORK"),
+        },
+        match snapshot.uptime {
+            Some(value) => available("UPTIME", format_uptime(value)),
+            None => unavailable("UPTIME"),
+        },
     ]
 }
 
@@ -269,6 +331,14 @@ fn available(label: &'static str, value: String) -> MetricCard {
         label,
         value,
         led: LedState::Green,
+    }
+}
+
+fn unavailable(label: &'static str) -> MetricCard {
+    MetricCard {
+        label,
+        value: "Unavailable".into(),
+        led: LedState::Red,
     }
 }
 

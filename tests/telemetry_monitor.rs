@@ -4,7 +4,9 @@ use std::{
     time::{Duration, Instant},
 };
 
-use termxboard::telemetry::{TelemetryMonitor, TelemetrySnapshot, TelemetrySource, TelemetryView};
+use termxboard::telemetry::{
+    Capacity, NetworkActivity, TelemetryMonitor, TelemetrySnapshot, TelemetrySource, TelemetryView,
+};
 
 struct ScriptedSource {
     results: VecDeque<Result<TelemetrySnapshot, String>>,
@@ -20,22 +22,29 @@ impl TelemetrySource for ScriptedSource {
 
 fn snapshot(cpu_percent: f32) -> TelemetrySnapshot {
     TelemetrySnapshot {
-        cpu_percent,
-        memory_used_bytes: 1,
-        memory_total_bytes: 2,
+        cpu_percent: Some(cpu_percent),
+        memory: Some(Capacity {
+            used_bytes: 1,
+            total_bytes: 2,
+        }),
         battery_percent: None,
-        disk_used_bytes: 1,
-        disk_total_bytes: 2,
-        network_received_bytes: 0,
-        network_transmitted_bytes: 0,
-        uptime: Duration::ZERO,
+        disk: Some(Capacity {
+            used_bytes: 1,
+            total_bytes: 2,
+        }),
+        network: Some(NetworkActivity {
+            received_bytes: 0,
+            transmitted_bytes: 0,
+        }),
+        uptime: Some(Duration::ZERO),
     }
 }
 
 fn wait_for_cpu(monitor: &mut TelemetryMonitor, now: Instant, expected: f32) {
     for _ in 0..100 {
         monitor.tick(now);
-        if matches!(monitor.view(), TelemetryView::Ready(value) if value.cpu_percent == expected) {
+        if matches!(monitor.view(), TelemetryView::Ready(value) if value.cpu_percent == Some(expected))
+        {
             return;
         }
         thread::sleep(Duration::from_millis(2));
@@ -70,7 +79,9 @@ fn collection_refreshes_every_three_seconds() {
 
     wait_for_cpu(&mut monitor, now, 10.0);
     monitor.tick(now + Duration::from_secs(2));
-    assert!(matches!(monitor.view(), TelemetryView::Ready(value) if value.cpu_percent == 10.0));
+    assert!(
+        matches!(monitor.view(), TelemetryView::Ready(value) if value.cpu_percent == Some(10.0))
+    );
     wait_for_cpu(&mut monitor, now + Duration::from_secs(3), 20.0);
 }
 
@@ -86,6 +97,33 @@ fn collection_errors_are_visible() {
     for _ in 0..100 {
         monitor.tick(now);
         if monitor.view().error_message() == Some("sensor failure") {
+            return;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    panic!("telemetry error was not visible");
+}
+
+#[test]
+fn transient_error_retains_last_good_readings_as_stale() {
+    let now = Instant::now();
+    let source = ScriptedSource {
+        results: [Ok(snapshot(10.0)), Err("sensor failure".into())].into(),
+        delay: Duration::ZERO,
+    };
+    let mut monitor = TelemetryMonitor::new(source, Duration::from_secs(3), now);
+    wait_for_cpu(&mut monitor, now, 10.0);
+
+    for _ in 0..100 {
+        monitor.tick(now + Duration::from_secs(3));
+        if monitor.view().error_message() == Some("sensor failure") {
+            let cards = monitor.view().cards();
+            assert!(cards[0].value.contains("10% (stale)"));
+            assert!(
+                cards
+                    .iter()
+                    .all(|card| card.led == termxboard::telemetry::LedState::Red)
+            );
             return;
         }
         thread::sleep(Duration::from_millis(2));

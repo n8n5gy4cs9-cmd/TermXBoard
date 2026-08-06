@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use ratatui::{Terminal, backend::TestBackend};
+use ratatui::{Terminal, backend::TestBackend, style::Color};
 use termxboard::{
     AppState,
     telemetry::{TelemetrySnapshot, TelemetryView},
@@ -32,17 +32,32 @@ fn dashboard_renders_loading_telemetry() {
 }
 
 #[test]
+fn dashboard_renders_loading_leds_in_orange() {
+    let backend = TestBackend::new(110, 32);
+    let mut terminal = Terminal::new(backend).expect("test terminal");
+    terminal
+        .draw(|frame| ui::render(frame, &AppState::default(), &TelemetryView::loading()))
+        .expect("render");
+
+    let orange_leds = terminal
+        .backend()
+        .buffer()
+        .content()
+        .iter()
+        .filter(|cell| cell.symbol() == "●" && cell.fg == Color::Rgb(255, 165, 0))
+        .count();
+    assert_eq!(orange_leds, 6);
+}
+
+#[test]
 fn dashboard_renders_unavailable_and_error_states() {
     let sample = TelemetrySnapshot {
-        cpu_percent: 1.0,
-        memory_used_bytes: 1,
-        memory_total_bytes: 2,
+        cpu_percent: Some(1.0),
+        memory: None,
         battery_percent: None,
-        disk_used_bytes: 1,
-        disk_total_bytes: 2,
-        network_received_bytes: 0,
-        network_transmitted_bytes: 0,
-        uptime: Duration::ZERO,
+        disk: None,
+        network: None,
+        uptime: Some(Duration::ZERO),
     };
 
     assert!(rendered(&TelemetryView::ready(sample)).contains("Unavailable"));
