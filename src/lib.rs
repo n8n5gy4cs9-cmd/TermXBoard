@@ -152,8 +152,34 @@ impl AppState {
         }
     }
 
+    fn adjust_selected_setting(&mut self, forward: bool) {
+        match self.settings_field {
+            SettingsField::City => return,
+            SettingsField::Theme => {
+                self.preferences.theme = if forward {
+                    self.preferences.theme.next()
+                } else {
+                    self.preferences.theme.previous()
+                };
+            }
+            SettingsField::ReducedMotion => {
+                self.preferences.reduced_motion = !self.preferences.reduced_motion;
+            }
+        }
+        self.preferences_changed = true;
+    }
+
+    fn activate_selected_setting(&mut self) {
+        if self.settings_field == SettingsField::City {
+            self.city_draft = self.preferences.city.clone();
+            self.city_editing = true;
+        } else {
+            self.adjust_selected_setting(true);
+        }
+    }
+
     pub fn handle_key(&mut self, key: KeyCommand) -> AppAction {
-        if key == KeyCommand::Character('q') {
+        if key == KeyCommand::Character('q') && !self.first_run && !self.city_editing {
             return AppAction::Quit;
         }
 
@@ -217,41 +243,15 @@ impl AppState {
                 AppAction::Continue
             }
             KeyCommand::Left if self.settings_visible => {
-                match self.settings_field {
-                    SettingsField::Theme => {
-                        self.preferences.theme = self.preferences.theme.previous()
-                    }
-                    SettingsField::ReducedMotion => {
-                        self.preferences.reduced_motion = !self.preferences.reduced_motion
-                    }
-                    SettingsField::City => {}
-                }
-                self.preferences_changed = self.settings_field != SettingsField::City;
+                self.adjust_selected_setting(false);
                 AppAction::Continue
             }
             KeyCommand::Right if self.settings_visible => {
-                match self.settings_field {
-                    SettingsField::Theme => self.preferences.theme = self.preferences.theme.next(),
-                    SettingsField::ReducedMotion => {
-                        self.preferences.reduced_motion = !self.preferences.reduced_motion
-                    }
-                    SettingsField::City => {}
-                }
-                self.preferences_changed = self.settings_field != SettingsField::City;
+                self.adjust_selected_setting(true);
                 AppAction::Continue
             }
             KeyCommand::Enter if self.settings_visible => {
-                match self.settings_field {
-                    SettingsField::City => {
-                        self.city_draft = self.preferences.city.clone();
-                        self.city_editing = true;
-                    }
-                    SettingsField::Theme => self.preferences.theme = self.preferences.theme.next(),
-                    SettingsField::ReducedMotion => {
-                        self.preferences.reduced_motion = !self.preferences.reduced_motion
-                    }
-                }
-                self.preferences_changed = self.settings_field != SettingsField::City;
+                self.activate_selected_setting();
                 AppAction::Continue
             }
             _ => AppAction::Continue,

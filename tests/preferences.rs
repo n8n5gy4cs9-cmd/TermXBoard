@@ -4,7 +4,10 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-use termxboard::preferences::{Preferences, PreferencesStore, Theme};
+use termxboard::{
+    AppState, KeyCommand, SettingsField,
+    preferences::{Preferences, PreferencesStore, SaveOutcome, Theme},
+};
 
 fn temp_config(name: &str) -> PathBuf {
     let nonce = SystemTime::now()
@@ -60,8 +63,20 @@ fn unwritable_config_becomes_session_only() {
     let path = temp_config("unwritable");
     fs::create_dir_all(&path).expect("directory where file should be");
 
-    let outcome = PreferencesStore::new(path.clone()).save(&Preferences::default());
+    let store = PreferencesStore::new(path.clone());
+    let mut app = AppState::new(Preferences::default(), false, None);
+    app.handle_key(KeyCommand::Character('s'));
+    app.handle_key(KeyCommand::Down);
+    assert_eq!(app.settings_field(), SettingsField::Theme);
+    app.handle_key(KeyCommand::Right);
+    let changed = app.take_preferences_changed().expect("session change");
+    let outcome = store.save(&changed);
 
-    assert!(!outcome.is_saved());
+    let SaveOutcome::SessionOnly(warning) = outcome else {
+        panic!("unwritable config should use session-only settings");
+    };
+    assert!(warning.contains("session-only"));
+    assert!(warning.contains("could not write"));
+    assert_eq!(app.preferences().theme, Theme::Cyberpunk);
     let _ = fs::remove_dir_all(path.parent().expect("parent"));
 }

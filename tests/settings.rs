@@ -33,6 +33,21 @@ fn first_run_can_replace_the_proposed_city() {
 }
 
 #[test]
+fn city_entry_accepts_lowercase_q() {
+    let mut app = AppState::new(Preferences::default(), true, None);
+
+    for character in "Iqaluit, Canada".chars() {
+        assert_eq!(
+            app.handle_key(KeyCommand::Character(character)),
+            AppAction::Continue
+        );
+    }
+    app.handle_key(KeyCommand::Enter);
+
+    assert_eq!(app.preferences().city, "Iqaluit, Canada");
+}
+
+#[test]
 fn settings_select_theme_and_reduced_motion() {
     let mut app = AppState::new(Preferences::default(), false, None);
     app.handle_key(KeyCommand::Character('s'));
