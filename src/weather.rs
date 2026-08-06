@@ -195,6 +195,7 @@ impl WeatherMonitor {
 
         if city != self.city {
             self.city = city.to_string();
+            self.last_good = None;
             self.view = WeatherView::Loading;
             self.next_refresh = now;
         }
@@ -206,6 +207,7 @@ impl WeatherMonitor {
             {
                 self.in_flight = true;
                 self.next_refresh = now + self.interval;
+                self.view = WeatherView::Loading;
             } else {
                 self.view = WeatherView::Error {
                     message: "weather worker stopped".into(),
@@ -219,9 +221,7 @@ impl WeatherMonitor {
 impl Drop for WeatherMonitor {
     fn drop(&mut self) {
         let _ = self.command_sender.send(WorkerCommand::Stop);
-        if let Some(worker) = self.worker.take() {
-            let _ = worker.join();
-        }
+        self.worker.take();
     }
 }
 

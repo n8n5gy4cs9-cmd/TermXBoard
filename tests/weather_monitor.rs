@@ -74,6 +74,8 @@ fn weather_refreshes_at_fifteen_minutes_and_on_manual_request() {
     wait_for_temperature(&mut monitor, now + Duration::from_secs(900), 2);
 
     monitor.refresh_now(now + Duration::from_secs(901));
+    monitor.tick(now + Duration::from_secs(901), "Turku, Finland");
+    assert_eq!(monitor.view(), &WeatherView::Loading);
     wait_for_temperature(&mut monitor, now + Duration::from_secs(901), 3);
 }
 
@@ -102,4 +104,41 @@ fn failure_retains_last_successful_session_result() {
         thread::sleep(Duration::from_millis(2));
     }
     panic!("weather error was not visible");
+}
+
+#[test]
+fn changing_city_does_not_reuse_another_citys_cached_weather() {
+    let now = Instant::now();
+    let client = ScriptedClient {
+        results: [Ok(report(7)), Err("city unavailable".into())].into(),
+        delay: Duration::ZERO,
+    };
+    let mut monitor = WeatherMonitor::new(client, Duration::from_secs(900), now);
+    wait_for_temperature(&mut monitor, now, 7);
+
+    for _ in 0..100 {
+        monitor.tick(now, "Helsinki, Finland");
+        if let WeatherView::Error { last_good, .. } = monitor.view() {
+            assert!(last_good.is_none());
+            return;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    panic!("new-city weather error was not visible");
+}
+
+#[test]
+fn dropping_monitor_does_not_wait_for_an_in_flight_network_request() {
+    let now = Instant::now();
+    let client = ScriptedClient {
+        results: [Ok(report(4))].into(),
+        delay: Duration::from_millis(200),
+    };
+    let mut monitor = WeatherMonitor::new(client, Duration::from_secs(900), now);
+    monitor.tick(now, "Turku, Finland");
+
+    let started = Instant::now();
+    drop(monitor);
+
+    assert!(started.elapsed() < Duration::from_millis(20));
 }
