@@ -54,7 +54,7 @@ fn dashboard_renders_loading_leds_in_orange() {
         .iter()
         .filter(|cell| cell.symbol() == "●" && cell.fg == Color::Rgb(255, 165, 0))
         .count();
-    assert_eq!(orange_leds, 7);
+    assert_eq!(orange_leds, 10);
 }
 
 #[test]

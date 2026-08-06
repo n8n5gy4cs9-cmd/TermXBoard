@@ -1,5 +1,6 @@
 //! TermXBoard's behavior seams.
 
+pub mod news;
 pub mod preferences;
 pub mod telemetry;
 pub mod ui;

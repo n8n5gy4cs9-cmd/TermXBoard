@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use chrono::Local;
+use chrono::{Local, Utc};
 use crossterm::{
     cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
@@ -21,6 +21,10 @@ use ratatui::{
 
 use crate::{
     AppAction, AppState, KeyCommand, MIN_HEIGHT, MIN_WIDTH, ScreenMode, SettingsField,
+    news::{
+        FeedNewsClient, FeedView, MacUrlOpener, NewsFeed, NewsMonitor, NewsSelection, NewsView,
+        activate_selected,
+    },
     preferences::{PreferencesStore, SaveOutcome, Theme},
     screen_mode,
     telemetry::{LedState, MacTelemetrySource, TelemetryMonitor, TelemetryView},
@@ -33,6 +37,14 @@ struct Palette {
     secondary: Color,
     accent: Color,
     dim: Color,
+}
+
+struct DashboardData<'a> {
+    app: &'a AppState,
+    telemetry: &'a TelemetryView,
+    weather: &'a WeatherView,
+    news: &'a NewsView,
+    news_selection: &'a NewsSelection,
 }
 
 impl Palette {
@@ -116,11 +128,28 @@ fn run_loop(
         Duration::from_secs(15 * 60),
         Instant::now(),
     );
+    let mut news = NewsMonitor::new(
+        FeedNewsClient::new(),
+        Duration::from_secs(15 * 60),
+        Instant::now(),
+    );
+    let mut news_selection = NewsSelection::default();
+    let mut url_opener = MacUrlOpener;
     loop {
         let now = Instant::now();
         telemetry.tick(now);
         weather.tick(now, &app.preferences().city);
-        terminal.draw(|frame| render(frame, &app, telemetry.view(), weather.view()))?;
+        news.tick(now);
+        terminal.draw(|frame| {
+            render_with_news(
+                frame,
+                &app,
+                telemetry.view(),
+                weather.view(),
+                news.view(),
+                &news_selection,
+            )
+        })?;
         if !event::poll(Duration::from_millis(100))? {
             continue;
         }
@@ -141,6 +170,27 @@ fn run_loop(
             KeyCode::Backspace => KeyCommand::Backspace,
             _ => continue,
         };
+        let news_controls_active = !app.is_first_run()
+            && !app.is_help_visible()
+            && !app.is_settings_visible()
+            && !app.is_city_editing();
+        if news_controls_active {
+            match command {
+                KeyCommand::Character('n') => news.refresh_now(Instant::now()),
+                KeyCommand::Left => news_selection.left(news.view()),
+                KeyCommand::Right => news_selection.right(news.view()),
+                KeyCommand::Up => news_selection.up(news.view()),
+                KeyCommand::Down => news_selection.down(news.view()),
+                KeyCommand::Enter => {
+                    if let Err(message) =
+                        activate_selected(&news_selection, news.view(), &mut url_opener)
+                    {
+                        app.set_warning(Some(message));
+                    }
+                }
+                _ => {}
+            }
+        }
         if app.handle_key(command) == AppAction::Quit {
             return Ok(());
         }
@@ -157,13 +207,42 @@ fn run_loop(
 }
 
 pub fn render(frame: &mut Frame, app: &AppState, telemetry: &TelemetryView, weather: &WeatherView) {
+    render_with_news(
+        frame,
+        app,
+        telemetry,
+        weather,
+        &NewsView::loading(),
+        &NewsSelection::default(),
+    );
+}
+
+pub fn render_with_news(
+    frame: &mut Frame,
+    app: &AppState,
+    telemetry: &TelemetryView,
+    weather: &WeatherView,
+    news: &NewsView,
+    news_selection: &NewsSelection,
+) {
     let area = frame.area();
     let colors = palette(app.preferences().theme);
     if screen_mode(area.width, area.height) == ScreenMode::Resize {
         render_resize(frame, area, colors);
         return;
     }
-    render_dashboard(frame, area, app, telemetry, weather, colors);
+    render_dashboard(
+        frame,
+        area,
+        DashboardData {
+            app,
+            telemetry,
+            weather,
+            news,
+            news_selection,
+        },
+        colors,
+    );
     if app.is_help_visible() {
         render_help(frame, centered_rect(58, 14, area), colors);
     } else if app.is_first_run() {
@@ -199,14 +278,7 @@ fn render_resize(frame: &mut Frame, area: Rect, colors: Palette) {
     frame.render_widget(message, area);
 }
 
-fn render_dashboard(
-    frame: &mut Frame,
-    area: Rect,
-    app: &AppState,
-    telemetry: &TelemetryView,
-    weather: &WeatherView,
-    colors: Palette,
-) {
+fn render_dashboard(frame: &mut Frame, area: Rect, data: DashboardData<'_>, colors: Palette) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -224,6 +296,7 @@ fn render_dashboard(
     .block(bordered(colors.secondary));
     frame.render_widget(header, rows[0]);
 
+    let body = Layout::vertical([Constraint::Length(16), Constraint::Min(9)]).split(rows[1]);
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
@@ -231,13 +304,14 @@ fn render_dashboard(
             Constraint::Percentage(36),
             Constraint::Percentage(22),
         ])
-        .split(rows[1]);
-    render_telemetry(frame, columns[0], telemetry, colors);
+        .split(body[0]);
+    render_telemetry(frame, columns[0], data.telemetry, colors);
     clock(frame, columns[1], colors);
     let right = Layout::vertical([Constraint::Percentage(68), Constraint::Percentage(32)])
         .split(columns[2]);
-    render_weather(frame, right[0], weather, colors);
+    render_weather(frame, right[0], data.weather, colors);
     standby(frame, right[1], " PROJECT ", "NO PROJECT LOADED", colors);
+    render_news(frame, body[1], data.news, data.news_selection, colors);
 
     let footer = Paragraph::new(Line::from(vec![
         Span::styled(" ● ", Style::default().fg(Color::Green)),
@@ -249,6 +323,8 @@ fn render_dashboard(
         Span::raw(" SETTINGS   "),
         Span::styled("w", bold(colors.accent)),
         Span::raw(" WEATHER   "),
+        Span::styled("n", bold(colors.accent)),
+        Span::raw(" NEWS   "),
         Span::styled("q", bold(colors.accent)),
         Span::raw(" QUIT"),
     ]))
@@ -256,7 +332,7 @@ fn render_dashboard(
     .block(bordered(colors.secondary));
     frame.render_widget(footer, rows[2]);
 
-    if let Some(warning) = app.warning() {
+    if let Some(warning) = data.app.warning() {
         let width = area.width.saturating_sub(4);
         frame.render_widget(
             Paragraph::new(format!("⚠ {warning}")).style(Style::default().fg(Color::Yellow)),
@@ -347,6 +423,77 @@ fn render_weather(frame: &mut Frame, area: Rect, weather: &WeatherView, colors: 
     );
 }
 
+fn render_news(
+    frame: &mut Frame,
+    area: Rect,
+    news: &NewsView,
+    selection: &NewsSelection,
+    colors: Palette,
+) {
+    let columns = Layout::horizontal([
+        Constraint::Percentage(34),
+        Constraint::Percentage(33),
+        Constraint::Percentage(33),
+    ])
+    .split(area);
+    let now = Utc::now();
+    for (column, feed) in columns.iter().zip(NewsFeed::ALL) {
+        let (status, led) = match news.feed(feed) {
+            FeedView::Loading { last_good: Some(_) } => ("REFRESH", Color::Rgb(255, 165, 0)),
+            FeedView::Loading { last_good: None } => ("LOADING", Color::Rgb(255, 165, 0)),
+            FeedView::Ready(_) => ("ONLINE", Color::Green),
+            FeedView::Error {
+                last_good: Some(_), ..
+            } => ("STALE", Color::Red),
+            FeedView::Error {
+                last_good: None, ..
+            } => ("ERROR", Color::Red),
+        };
+        let mut lines = vec![Line::from(vec![
+            Span::styled("● ", Style::default().fg(led)),
+            Span::styled(status, bold(led)),
+        ])];
+        for (index, headline) in news.headlines(feed).iter().enumerate() {
+            let marker = if selection.is_selected(feed, index) {
+                "▶"
+            } else {
+                " "
+            };
+            let style = if selection.is_selected(feed, index) {
+                bold(colors.accent)
+            } else {
+                Style::default().fg(colors.dim)
+            };
+            lines.push(Line::from(Span::styled(
+                format!(
+                    "{marker} {}  {}",
+                    relative_time(headline.published_at, now),
+                    headline.title
+                ),
+                style,
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(lines)
+                .block(bordered(colors.secondary).title(format!(" {} ", feed.label()))),
+            *column,
+        );
+    }
+}
+
+fn relative_time(published_at: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>) -> String {
+    let seconds = now.signed_duration_since(published_at).num_seconds().max(0);
+    if seconds < 60 {
+        "now".into()
+    } else if seconds < 60 * 60 {
+        format!("{}m", seconds / 60)
+    } else if seconds < 24 * 60 * 60 {
+        format!("{}h", seconds / (60 * 60))
+    } else {
+        format!("{}d", seconds / (24 * 60 * 60))
+    }
+}
+
 fn weather_lines<'a>(
     lines: &mut Vec<Line<'a>>,
     city: &'a str,
@@ -411,6 +558,8 @@ fn render_help(frame: &mut Frame, area: Rect, colors: Palette) {
         key_line("?", "Toggle this help", colors),
         key_line("s", "Toggle Settings", colors),
         key_line("w", "Refresh weather", colors),
+        key_line("n", "Refresh news", colors),
+        key_line("Arrows / Enter", "Select / open headline", colors),
         key_line("q", "Quit immediately", colors),
     ])
     .alignment(Alignment::Center)
