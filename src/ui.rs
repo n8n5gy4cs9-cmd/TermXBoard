@@ -2,6 +2,7 @@ use std::{io, time::Duration};
 
 use chrono::Local;
 use crossterm::{
+    cursor::Show,
     event::{self, Event, KeyCode, KeyEventKind},
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
@@ -23,18 +24,39 @@ const MAGENTA: Color = Color::Rgb(255, 45, 149);
 const DIM: Color = Color::Rgb(86, 104, 122);
 
 pub fn run() -> io::Result<()> {
-    enable_raw_mode()?;
-    let mut stdout = io::stdout();
-    execute!(stdout, EnterAlternateScreen)?;
+    let _session = TerminalSession::enter()?;
 
-    let backend = CrosstermBackend::new(stdout);
+    let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend)?;
     let result = run_loop(&mut terminal);
-
-    disable_raw_mode()?;
-    execute!(terminal.backend_mut(), LeaveAlternateScreen)?;
     terminal.show_cursor()?;
     result
+}
+
+struct TerminalSession {
+    alternate_screen: bool,
+}
+
+impl TerminalSession {
+    fn enter() -> io::Result<Self> {
+        enable_raw_mode()?;
+        let mut session = Self {
+            alternate_screen: false,
+        };
+
+        execute!(io::stdout(), EnterAlternateScreen)?;
+        session.alternate_screen = true;
+        Ok(session)
+    }
+}
+
+impl Drop for TerminalSession {
+    fn drop(&mut self) {
+        if self.alternate_screen {
+            let _ = execute!(io::stdout(), LeaveAlternateScreen, Show);
+        }
+        let _ = disable_raw_mode();
+    }
 }
 
 fn run_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>) -> io::Result<()> {
