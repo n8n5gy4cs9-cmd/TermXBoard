@@ -1,6 +1,7 @@
 //! TermXBoard's behavior seams.
 
 pub mod preferences;
+pub mod telemetry;
 pub mod ui;
 
 pub const MIN_WIDTH: u16 = 110;

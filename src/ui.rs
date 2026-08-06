@@ -1,4 +1,7 @@
-use std::{io, time::Duration};
+use std::{
+    io,
+    time::{Duration, Instant},
+};
 
 use chrono::Local;
 use crossterm::{
@@ -20,6 +23,7 @@ use crate::{
     AppAction, AppState, KeyCommand, MIN_HEIGHT, MIN_WIDTH, ScreenMode, SettingsField,
     preferences::{PreferencesStore, SaveOutcome, Theme},
     screen_mode,
+    telemetry::{LedState, MacTelemetrySource, TelemetryMonitor, TelemetryView},
 };
 
 #[derive(Clone, Copy)]
@@ -101,8 +105,14 @@ fn run_loop(
     store: &PreferencesStore,
     mut app: AppState,
 ) -> io::Result<()> {
+    let mut telemetry = TelemetryMonitor::new(
+        MacTelemetrySource::new(),
+        Duration::from_secs(3),
+        Instant::now(),
+    );
     loop {
-        terminal.draw(|frame| render(frame, &app))?;
+        telemetry.tick(Instant::now());
+        terminal.draw(|frame| render(frame, &app, telemetry.view()))?;
         if !event::poll(Duration::from_millis(100))? {
             continue;
         }
@@ -135,14 +145,14 @@ fn run_loop(
     }
 }
 
-fn render(frame: &mut Frame, app: &AppState) {
+pub fn render(frame: &mut Frame, app: &AppState, telemetry: &TelemetryView) {
     let area = frame.area();
     let colors = palette(app.preferences().theme);
     if screen_mode(area.width, area.height) == ScreenMode::Resize {
         render_resize(frame, area, colors);
         return;
     }
-    render_dashboard(frame, area, app, colors);
+    render_dashboard(frame, area, app, telemetry, colors);
     if app.is_help_visible() {
         render_help(frame, centered_rect(58, 14, area), colors);
     } else if app.is_first_run() {
@@ -178,7 +188,13 @@ fn render_resize(frame: &mut Frame, area: Rect, colors: Palette) {
     frame.render_widget(message, area);
 }
 
-fn render_dashboard(frame: &mut Frame, area: Rect, app: &AppState, colors: Palette) {
+fn render_dashboard(
+    frame: &mut Frame,
+    area: Rect,
+    app: &AppState,
+    telemetry: &TelemetryView,
+    colors: Palette,
+) {
     let rows = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -199,18 +215,12 @@ fn render_dashboard(frame: &mut Frame, area: Rect, app: &AppState, colors: Palet
     let columns = Layout::default()
         .direction(Direction::Horizontal)
         .constraints([
-            Constraint::Percentage(22),
-            Constraint::Percentage(56),
+            Constraint::Percentage(42),
+            Constraint::Percentage(36),
             Constraint::Percentage(22),
         ])
         .split(rows[1]);
-    standby(
-        frame,
-        columns[0],
-        " SYSTEM ",
-        "TELEMETRY\nLINK STANDBY",
-        colors,
-    );
+    render_telemetry(frame, columns[0], telemetry, colors);
     clock(frame, columns[1], colors);
     standby(frame, columns[2], " PROJECT ", "NO PROJECT\nLOADED", colors);
 
@@ -235,6 +245,48 @@ fn render_dashboard(frame: &mut Frame, area: Rect, app: &AppState, colors: Palet
             Paragraph::new(format!("⚠ {warning}")).style(Style::default().fg(Color::Yellow)),
             Rect::new(area.x + 2, area.y + area.height - 5, width, 1),
         );
+    }
+}
+
+fn render_telemetry(frame: &mut Frame, area: Rect, telemetry: &TelemetryView, colors: Palette) {
+    let inner = bordered(colors.secondary)
+        .title(" SYSTEM TELEMETRY // 3s ")
+        .inner(area);
+    frame.render_widget(
+        bordered(colors.secondary).title(" SYSTEM TELEMETRY // 3s "),
+        area,
+    );
+    let rows = Layout::vertical([
+        Constraint::Percentage(34),
+        Constraint::Percentage(33),
+        Constraint::Percentage(33),
+    ])
+    .split(inner);
+    let cards = telemetry.cards();
+    for (row_index, row) in rows.iter().enumerate() {
+        let columns = Layout::horizontal([Constraint::Percentage(50), Constraint::Percentage(50)])
+            .split(*row);
+        for (column_index, column) in columns.iter().enumerate() {
+            let card = &cards[row_index * 2 + column_index];
+            let led = match card.led {
+                LedState::Green => Color::Green,
+                LedState::Orange => Color::Yellow,
+                LedState::Red => Color::Red,
+            };
+            let widget = Paragraph::new(vec![
+                Line::from(vec![
+                    Span::styled("● ", Style::default().fg(led)),
+                    Span::styled(card.label, bold(colors.primary)),
+                ]),
+                Line::from(Span::styled(
+                    card.value.as_str(),
+                    Style::default().fg(colors.dim),
+                )),
+            ])
+            .alignment(Alignment::Center)
+            .block(bordered(colors.secondary));
+            frame.render_widget(widget, *column);
+        }
     }
 }
 
