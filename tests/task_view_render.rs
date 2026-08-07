@@ -4,6 +4,7 @@ use ratatui::{Terminal, backend::TestBackend};
 use termxboard::{
     AppState,
     news::{NewsSelection, NewsView},
+    preferences::Preferences,
     progress::{LoadProjectMenu, LoadedProject, Project, TaskControls, TaskSelection},
     telemetry::TelemetryView,
     ui,
@@ -182,4 +183,46 @@ fn dashboard_load_menu_offers_new_and_remembered_paths() {
     assert!(output.contains("LOAD PROGRESS FILE"));
     assert!(output.contains("Load new path"));
     assert!(output.contains("/tmp/nodus/progress.json"));
+}
+
+#[test]
+fn reduced_motion_renders_ascii_fallback_glyphs() {
+    let prefs = Preferences {
+        reduced_motion: true,
+        ..Preferences::default()
+    };
+    let mut app = AppState::new(prefs, false, None);
+    app.show_task_view();
+    let project = loaded_project();
+    let selection = TaskSelection::for_project(&project.project);
+
+    let output = rendered_with(
+        &app,
+        Some(&project),
+        &LoadProjectMenu::default(),
+        &selection,
+        &TaskControls::default(),
+    );
+
+    assert!(
+        !output.contains("\u{25C6}"),
+        "should not contain ◆ in reduced motion mode"
+    );
+    assert!(
+        !output.contains("\u{25B6}"),
+        "should not contain ▶ in reduced motion mode"
+    );
+    assert!(
+        !output.contains("\u{00B7}"),
+        "should not contain · in reduced motion mode"
+    );
+    assert!(
+        !output.contains("\u{2191}"),
+        "should not contain ↑ in footer"
+    );
+    assert!(!output.contains("\u{26A0}"), "should not contain ⚠");
+    assert!(
+        output.contains("^/v SELECT"),
+        "should have ASCII arrows in footer"
+    );
 }

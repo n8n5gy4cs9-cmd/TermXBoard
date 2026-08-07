@@ -51,6 +51,7 @@ struct DashboardData<'a> {
     weather: &'a WeatherView,
     news: &'a NewsView,
     news_selection: &'a NewsSelection,
+    reduced_motion: bool,
 }
 
 struct TaskViewData<'a> {
@@ -60,6 +61,7 @@ struct TaskViewData<'a> {
     selection: &'a TaskSelection,
     controls: &'a TaskControls,
     monitor: Option<&'a ProjectMonitor>,
+    reduced_motion: bool,
 }
 
 pub struct ApplicationData<'a> {
@@ -456,6 +458,7 @@ pub fn render_application(frame: &mut Frame, data: ApplicationData<'_>) {
     } = data;
     let area = frame.area();
     let colors = palette(app.preferences().theme);
+    let reduced_motion = app.preferences().reduced_motion;
     if screen_mode(area.width, area.height) == ScreenMode::Resize {
         render_resize(frame, area, colors);
         return;
@@ -472,6 +475,7 @@ pub fn render_application(frame: &mut Frame, data: ApplicationData<'_>) {
                     selection: task_selection,
                     controls: task_controls,
                     monitor: project_monitor,
+                    reduced_motion,
                 },
                 colors,
             );
@@ -485,6 +489,7 @@ pub fn render_application(frame: &mut Frame, data: ApplicationData<'_>) {
                     weather,
                     news,
                     news_selection,
+                    reduced_motion,
                 },
                 colors,
             );
@@ -499,6 +504,7 @@ pub fn render_application(frame: &mut Frame, data: ApplicationData<'_>) {
                 weather,
                 news,
                 news_selection,
+                reduced_motion,
             },
             colors,
         );
@@ -590,8 +596,11 @@ fn render_dashboard(frame: &mut Frame, area: Rect, data: DashboardData<'_>, colo
     standby(frame, right[1], " PROJECT ", project_prompt, colors);
     render_news(frame, body[1], data.news, data.news_selection, colors);
 
+    let reduced_motion = data.reduced_motion;
+    let led_char = pulse_led_char(reduced_motion);
+    let led_style = pulse_led_style(Color::Green, reduced_motion);
     let footer = Paragraph::new(Line::from(vec![
-        Span::styled(" ● ", Style::default().fg(Color::Green)),
+        Span::styled(format!(" {led_char} "), led_style),
         Span::styled("CORE ONLINE", Style::default().fg(colors.primary)),
         Span::raw("   "),
         Span::styled("?", bold(colors.accent)),
@@ -612,9 +621,10 @@ fn render_dashboard(frame: &mut Frame, area: Rect, data: DashboardData<'_>, colo
     frame.render_widget(footer, rows[2]);
 
     if let Some(warning) = data.app.warning() {
+        let glyph = safe_glyph("\u{26A0}", "!", data.reduced_motion);
         let width = area.width.saturating_sub(4);
         frame.render_widget(
-            Paragraph::new(format!("⚠ {warning}")).style(Style::default().fg(Color::Yellow)),
+            Paragraph::new(format!("{glyph} {warning}")).style(Style::default().fg(Color::Yellow)),
             Rect::new(area.x + 2, area.y + area.height - 5, width, 1),
         );
     }
@@ -909,11 +919,11 @@ fn render_task_view(frame: &mut Frame, area: Rect, data: TaskViewData<'_>, color
             let selected = data.selection.is_selected(task);
             let changed = changed_ids.contains(&task.id.as_str());
             let marker = if current {
-                "◆"
+                safe_glyph("\u{25C6}", "+", data.reduced_motion)
             } else if selected {
-                "▶"
+                safe_glyph("\u{25B6}", ">", data.reduced_motion)
             } else {
-                "·"
+                safe_glyph("\u{00B7}", ".", data.reduced_motion)
             };
             let mut text = format!("{marker} {}", task.id);
             if let Some(title) = &task.title {
@@ -968,7 +978,10 @@ fn render_task_view(frame: &mut Frame, area: Rect, data: TaskViewData<'_>, color
             Span::raw(" REFRESH   "),
             Span::styled("l", bold(colors.accent)),
             Span::raw(" LOAD   "),
-            Span::styled("↑/↓", bold(colors.accent)),
+            Span::styled(
+                safe_glyph("\u{2191}/\u{2193}", "^/v", data.reduced_motion),
+                bold(colors.accent),
+            ),
             Span::raw(" SELECT   "),
             Span::styled("f/g", bold(colors.accent)),
             Span::raw(" FILTER/GROUP   "),
@@ -983,8 +996,9 @@ fn render_task_view(frame: &mut Frame, area: Rect, data: TaskViewData<'_>, color
     );
 
     if let Some(warning) = data.app.warning() {
+        let glyph = safe_glyph("\u{26A0}", "!", data.reduced_motion);
         frame.render_widget(
-            Paragraph::new(format!("⚠ {warning}")).style(Style::default().fg(Color::Yellow)),
+            Paragraph::new(format!("{glyph} {warning}")).style(Style::default().fg(Color::Yellow)),
             Rect::new(
                 area.x + 2,
                 area.y + area.height - 5,
@@ -1355,6 +1369,45 @@ fn render_settings(frame: &mut Frame, area: Rect, app: &AppState, colors: Palett
 
 fn bold(color: Color) -> Style {
     Style::default().fg(color).add_modifier(Modifier::BOLD)
+}
+
+fn pulse_led_style(base_color: Color, reduced_motion: bool) -> Style {
+    if reduced_motion {
+        return Style::default().fg(base_color);
+    }
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as f64;
+    let phase = (millis / 2000.0 * std::f64::consts::TAU).sin();
+    let intensity = 0.35 + 0.65 * phase.abs();
+    match base_color {
+        Color::Rgb(r, g, b) => Style::default().fg(Color::Rgb(
+            ((r as f64) * intensity) as u8,
+            ((g as f64) * intensity) as u8,
+            ((b as f64) * intensity) as u8,
+        )),
+        _ => {
+            let multiplier = (intensity * 255.0) as u8;
+            Style::default().fg(Color::Rgb(multiplier, multiplier, multiplier))
+        }
+    }
+}
+
+fn pulse_led_char(reduced_motion: bool) -> &'static str {
+    if reduced_motion {
+        return "\u{25CF}";
+    }
+    let millis = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        % 1000;
+    if millis < 800 { "\u{25CF}" } else { "\u{25CB}" }
+}
+
+fn safe_glyph<'a>(unicode: &'a str, ascii: &'a str, reduced_motion: bool) -> &'a str {
+    if reduced_motion { ascii } else { unicode }
 }
 
 fn bordered(color: Color) -> Block<'static> {
