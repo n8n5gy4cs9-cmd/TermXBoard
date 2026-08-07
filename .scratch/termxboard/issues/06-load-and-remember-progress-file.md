@@ -4,10 +4,10 @@
 
 **Blocked by:** 02 — Portable preferences.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] Absolute and relative paths load through both launch argument and keyboard-driven menu.
-- [ ] The last successfully loaded absolute path becomes the Remembered Project without auto-opening next launch.
-- [ ] Unknown fields are tolerated; missing required data, missing files, and malformed JSON produce clear errors without losing valid state.
-- [ ] No TASKS.md or inferred project data is read, generated, or required.
-- [ ] Loading, validation, path handling, and remembered-project behavior have automated tests.
+- [x] Absolute and relative paths load through both launch argument and keyboard-driven menu.
+- [x] The last successfully loaded absolute path becomes the Remembered Project without auto-opening next launch.
+- [x] Unknown fields are tolerated; missing required data, missing files, and malformed JSON produce clear errors without losing valid state.
+- [x] No TASKS.md or inferred project data is read, generated, or required.
+- [x] Loading, validation, path handling, and remembered-project behavior have automated tests.

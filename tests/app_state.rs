@@ -1,4 +1,4 @@
-use termxboard::{AppAction, AppState, KeyCommand};
+use termxboard::{AppAction, AppState, AppView, KeyCommand};
 
 #[test]
 fn q_exits_immediately() {
@@ -7,6 +7,26 @@ fn q_exits_immediately() {
     let action = app.handle_key(KeyCommand::Character('q'));
 
     assert_eq!(action, AppAction::Quit);
+}
+
+#[test]
+fn successful_project_load_opens_task_view_and_d_t_switch_views() {
+    let mut app = AppState::default();
+    assert_eq!(app.view(), AppView::Dashboard);
+    app.show_task_view();
+    assert_eq!(app.view(), AppView::Task);
+
+    app.handle_key(KeyCommand::Character('d'));
+    assert_eq!(app.view(), AppView::Dashboard);
+    app.show_task_view();
+    assert_eq!(app.view(), AppView::Task);
+}
+
+#[test]
+fn task_view_cannot_open_without_a_loaded_project() {
+    let mut app = AppState::default();
+    app.handle_key(KeyCommand::Character('t'));
+    assert_eq!(app.view(), AppView::Dashboard);
 }
 
 #[test]

@@ -1,5 +1,6 @@
 use std::{
     io,
+    path::{Path, PathBuf},
     time::{Duration, Instant},
 };
 
@@ -20,12 +21,17 @@ use ratatui::{
 };
 
 use crate::{
-    AppAction, AppState, KeyCommand, MIN_HEIGHT, MIN_WIDTH, ScreenMode, SettingsField,
+    AppAction, AppState, AppView, KeyCommand, MIN_HEIGHT, MIN_WIDTH, ScreenMode, SettingsField,
     news::{
         FeedNewsClient, FeedView, MacUrlOpener, NewsFeed, NewsMonitor, NewsSelection, NewsView,
         activate_selected,
     },
     preferences::{PreferencesStore, SaveOutcome, Theme},
+    progress::{
+        LoadMenuStage, LoadProjectMenu, LoadedProject, ProjectHealth, ProjectMonitor,
+        ProjectSession, ProjectTask, REFRESH_INTERVAL, TaskBoard, TaskControls, TaskMenu,
+        TaskProjection, TaskSelection,
+    },
     screen_mode,
     telemetry::{LedState, MacTelemetrySource, TelemetryMonitor, TelemetryView},
     weather::{WeatherLed, WeatherMonitor, WeatherReport, WeatherView, WttrWeatherClient},
@@ -45,6 +51,28 @@ struct DashboardData<'a> {
     weather: &'a WeatherView,
     news: &'a NewsView,
     news_selection: &'a NewsSelection,
+}
+
+struct TaskViewData<'a> {
+    app: &'a AppState,
+    loaded: &'a LoadedProject,
+    weather: &'a WeatherView,
+    selection: &'a TaskSelection,
+    controls: &'a TaskControls,
+    monitor: Option<&'a ProjectMonitor>,
+}
+
+pub struct ApplicationData<'a> {
+    pub app: &'a AppState,
+    pub telemetry: &'a TelemetryView,
+    pub weather: &'a WeatherView,
+    pub news: &'a NewsView,
+    pub news_selection: &'a NewsSelection,
+    pub active_project: Option<&'a LoadedProject>,
+    pub load_menu: &'a LoadProjectMenu,
+    pub task_selection: &'a TaskSelection,
+    pub task_controls: &'a TaskControls,
+    pub project_monitor: Option<&'a ProjectMonitor>,
 }
 
 impl Palette {
@@ -80,10 +108,22 @@ fn palette(theme: Theme) -> Palette {
 pub fn run() -> io::Result<()> {
     let store = PreferencesStore::beside_executable()?;
     let loaded = store.load();
-    let app = AppState::new(loaded.preferences, loaded.is_first_run, loaded.warning);
+    let remembered_project = loaded.preferences.remembered_project.clone();
+    let mut app = AppState::new(loaded.preferences, loaded.is_first_run, loaded.warning);
+    let mut project_session = ProjectSession::new(remembered_project);
+    let cwd = std::env::current_dir()?;
+    if let Some(argument) = std::env::args_os().nth(1) {
+        load_requested_project(
+            &mut project_session,
+            &mut app,
+            PathBuf::from(argument),
+            &cwd,
+            &store,
+        );
+    }
     let _session = TerminalSession::enter()?;
     let mut terminal = Terminal::new(CrosstermBackend::new(io::stdout()))?;
-    let result = run_loop(&mut terminal, &store, app);
+    let result = run_loop(&mut terminal, &store, app, project_session, cwd);
     terminal.show_cursor()?;
     result
 }
@@ -117,6 +157,8 @@ fn run_loop(
     terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
     store: &PreferencesStore,
     mut app: AppState,
+    mut project_session: ProjectSession,
+    cwd: PathBuf,
 ) -> io::Result<()> {
     let mut telemetry = TelemetryMonitor::new(
         MacTelemetrySource::new(),
@@ -135,19 +177,44 @@ fn run_loop(
     );
     let mut news_selection = NewsSelection::default();
     let mut url_opener = MacUrlOpener;
+    let mut load_menu = LoadProjectMenu::default();
+    let mut project_monitor: Option<ProjectMonitor> = project_session
+        .active()
+        .map(|loaded| ProjectMonitor::new(loaded, REFRESH_INTERVAL, Instant::now()));
+    let mut task_selection = project_session
+        .active()
+        .map(|loaded| TaskSelection::for_project(&loaded.project))
+        .unwrap_or_default();
+    let mut task_controls = TaskControls::default();
     loop {
         let now = Instant::now();
         telemetry.tick(now);
         weather.tick(now, &app.preferences().city);
         news.tick(now);
+        if let Some(ref mut monitor) = project_monitor {
+            monitor.tick(now, app.view() == AppView::Task);
+            revalidate_selection_after_refresh(
+                &mut task_selection,
+                monitor.active().map(|loaded| &loaded.project),
+                task_controls.filters(),
+                task_controls.group_by(),
+            );
+        }
         terminal.draw(|frame| {
-            render_with_news(
+            render_application(
                 frame,
-                &app,
-                telemetry.view(),
-                weather.view(),
-                news.view(),
-                &news_selection,
+                ApplicationData {
+                    app: &app,
+                    telemetry: telemetry.view(),
+                    weather: weather.view(),
+                    news: news.view(),
+                    news_selection: &news_selection,
+                    active_project: project_monitor.as_ref().and_then(|m| m.active()),
+                    load_menu: &load_menu,
+                    task_selection: &task_selection,
+                    task_controls: &task_controls,
+                    project_monitor: project_monitor.as_ref(),
+                },
             )
         })?;
         if !event::poll(Duration::from_millis(100))? {
@@ -170,10 +237,90 @@ fn run_loop(
             KeyCode::Backspace => KeyCommand::Backspace,
             _ => continue,
         };
-        let news_controls_active = !app.is_first_run()
+        if load_menu.stage() != LoadMenuStage::Closed {
+            if let Some(path) = load_menu.handle_key(command)
+                && load_requested_project(&mut project_session, &mut app, path, &cwd, store)
+            {
+                if let Some(loaded) = project_session.active() {
+                    project_monitor = Some(ProjectMonitor::new(
+                        loaded,
+                        REFRESH_INTERVAL,
+                        Instant::now(),
+                    ));
+                    task_selection = TaskSelection::for_project(&loaded.project);
+                }
+                task_controls = TaskControls::default();
+            }
+            continue;
+        }
+        let view_controls_active = !app.is_first_run()
             && !app.is_help_visible()
             && !app.is_settings_visible()
             && !app.is_city_editing();
+        if command == KeyCommand::Character('t')
+            && project_monitor.as_ref().and_then(|m| m.active()).is_some()
+            && view_controls_active
+        {
+            app.show_task_view();
+            continue;
+        }
+        if app.view() == AppView::Task
+            && view_controls_active
+            && let Some(loaded) = project_monitor.as_ref().and_then(|m| m.active())
+        {
+            if task_controls.menu() != TaskMenu::Closed
+                || matches!(
+                    command,
+                    KeyCommand::Character('f') | KeyCommand::Character('g') | KeyCommand::Escape
+                )
+            {
+                task_controls.handle_key(command, &loaded.project);
+                let projection = TaskProjection::new(
+                    &loaded.project,
+                    task_controls.filters(),
+                    task_controls.group_by(),
+                );
+                task_selection.ensure_visible(&projection.ordered_tasks());
+                continue;
+            }
+            let projection = TaskProjection::new(
+                &loaded.project,
+                task_controls.filters(),
+                task_controls.group_by(),
+            );
+            let ordered_tasks = projection.ordered_tasks();
+            match command {
+                KeyCommand::Up | KeyCommand::Left => {
+                    task_selection.previous_in(&ordered_tasks);
+                    continue;
+                }
+                KeyCommand::Down | KeyCommand::Right => {
+                    task_selection.next_in(&ordered_tasks);
+                    continue;
+                }
+                KeyCommand::Character('r') => {
+                    if let Some(ref mut monitor) = project_monitor {
+                        monitor.refresh_now(Instant::now());
+                    }
+                    revalidate_selection_after_refresh(
+                        &mut task_selection,
+                        project_monitor
+                            .as_ref()
+                            .and_then(|m| m.active())
+                            .map(|loaded| &loaded.project),
+                        task_controls.filters(),
+                        task_controls.group_by(),
+                    );
+                    continue;
+                }
+                _ => {}
+            }
+        }
+        if command == KeyCommand::Character('l') && view_controls_active {
+            load_menu.open(project_session.remembered_project().map(Path::to_path_buf));
+            continue;
+        }
+        let news_controls_active = view_controls_active && app.view() == AppView::Dashboard;
         if news_controls_active {
             match command {
                 KeyCommand::Character('n') => news.refresh_now(Instant::now()),
@@ -206,6 +353,58 @@ fn run_loop(
     }
 }
 
+fn load_requested_project(
+    session: &mut ProjectSession,
+    app: &mut AppState,
+    path: PathBuf,
+    cwd: &Path,
+    store: &PreferencesStore,
+) -> bool {
+    match session.load(path, cwd) {
+        Ok(loaded) => {
+            let absolute_path = loaded.path.clone();
+            app.show_task_view();
+            app.remember_project(absolute_path);
+            app.set_warning(None);
+            if !app.is_first_run()
+                && let Some(preferences) = app.take_preferences_changed()
+            {
+                match store.save(&preferences) {
+                    SaveOutcome::Saved => app.set_warning(None),
+                    SaveOutcome::SessionOnly(warning) => app.set_warning(Some(warning)),
+                }
+            }
+            true
+        }
+        Err(error) => {
+            app.set_warning(Some(error));
+            false
+        }
+    }
+}
+
+fn revalidate_selection_after_refresh(
+    selection: &mut TaskSelection,
+    project: Option<&crate::progress::Project>,
+    filters: &crate::progress::TaskFilters,
+    group_by: crate::progress::GroupBy,
+) {
+    let Some(project) = project else {
+        return;
+    };
+    let projection = TaskProjection::new(project, filters, group_by);
+    let switched = project.current_task.as_ref().is_some_and(|id| {
+        selection
+            .selected(project)
+            .map(|selected| selected.id != *id)
+            .unwrap_or(true)
+    });
+    if switched {
+        *selection = TaskSelection::for_project(project);
+    }
+    selection.ensure_visible(&projection.ordered_tasks());
+}
+
 pub fn render(frame: &mut Frame, app: &AppState, telemetry: &TelemetryView, weather: &WeatherView) {
     render_with_news(
         frame,
@@ -225,30 +424,103 @@ pub fn render_with_news(
     news: &NewsView,
     news_selection: &NewsSelection,
 ) {
+    render_application(
+        frame,
+        ApplicationData {
+            app,
+            telemetry,
+            weather,
+            news,
+            news_selection,
+            active_project: None,
+            load_menu: &LoadProjectMenu::default(),
+            task_selection: &TaskSelection::default(),
+            task_controls: &TaskControls::default(),
+            project_monitor: None,
+        },
+    );
+}
+
+pub fn render_application(frame: &mut Frame, data: ApplicationData<'_>) {
+    let ApplicationData {
+        app,
+        telemetry,
+        weather,
+        news,
+        news_selection,
+        active_project,
+        load_menu,
+        task_selection,
+        task_controls,
+        project_monitor,
+    } = data;
     let area = frame.area();
     let colors = palette(app.preferences().theme);
     if screen_mode(area.width, area.height) == ScreenMode::Resize {
         render_resize(frame, area, colors);
         return;
     }
-    render_dashboard(
-        frame,
-        area,
-        DashboardData {
-            app,
-            telemetry,
-            weather,
-            news,
-            news_selection,
-        },
-        colors,
-    );
+    if app.view() == AppView::Task {
+        if let Some(loaded) = active_project {
+            render_task_view(
+                frame,
+                area,
+                TaskViewData {
+                    app,
+                    loaded,
+                    weather,
+                    selection: task_selection,
+                    controls: task_controls,
+                    monitor: project_monitor,
+                },
+                colors,
+            );
+        } else {
+            render_dashboard(
+                frame,
+                area,
+                DashboardData {
+                    app,
+                    telemetry,
+                    weather,
+                    news,
+                    news_selection,
+                },
+                colors,
+            );
+        }
+    } else {
+        render_dashboard(
+            frame,
+            area,
+            DashboardData {
+                app,
+                telemetry,
+                weather,
+                news,
+                news_selection,
+            },
+            colors,
+        );
+    }
     if app.is_help_visible() {
         render_help(frame, centered_rect(58, 14, area), colors);
     } else if app.is_first_run() {
         render_first_run(frame, centered_rect(68, 12, area), app, colors);
     } else if app.is_settings_visible() {
         render_settings(frame, centered_rect(72, 16, area), app, colors);
+    } else if load_menu.stage() != LoadMenuStage::Closed {
+        render_load_menu(frame, centered_rect(76, 14, area), load_menu, colors);
+    } else if let (Some(loaded), menu) = (active_project, task_controls.menu())
+        && menu != TaskMenu::Closed
+    {
+        render_task_controls_menu(
+            frame,
+            centered_rect(72, 18, area),
+            task_controls,
+            &loaded.project,
+            colors,
+        );
     }
 }
 
@@ -310,7 +582,12 @@ fn render_dashboard(frame: &mut Frame, area: Rect, data: DashboardData<'_>, colo
     let right = Layout::vertical([Constraint::Percentage(68), Constraint::Percentage(32)])
         .split(columns[2]);
     render_weather(frame, right[0], data.weather, colors);
-    standby(frame, right[1], " PROJECT ", "NO PROJECT LOADED", colors);
+    let project_prompt = if data.app.preferences().remembered_project.is_some() {
+        "L LOAD PROJECT\nREMEMBERED READY"
+    } else {
+        "L LOAD PROJECT"
+    };
+    standby(frame, right[1], " PROJECT ", project_prompt, colors);
     render_news(frame, body[1], data.news, data.news_selection, colors);
 
     let footer = Paragraph::new(Line::from(vec![
@@ -325,6 +602,8 @@ fn render_dashboard(frame: &mut Frame, area: Rect, data: DashboardData<'_>, colo
         Span::raw(" WEATHER   "),
         Span::styled("n", bold(colors.accent)),
         Span::raw(" NEWS   "),
+        Span::styled("l", bold(colors.accent)),
+        Span::raw(" LOAD   "),
         Span::styled("q", bold(colors.accent)),
         Span::raw(" QUIT"),
     ]))
@@ -494,6 +773,441 @@ fn relative_time(published_at: chrono::DateTime<Utc>, now: chrono::DateTime<Utc>
     }
 }
 
+fn render_task_view(frame: &mut Frame, area: Rect, data: TaskViewData<'_>, colors: Palette) {
+    let rows = Layout::vertical([
+        Constraint::Length(5),
+        Constraint::Min(20),
+        Constraint::Length(3),
+    ])
+    .split(area);
+    let project_name = data.loaded.project.project.as_deref().unwrap_or("PROJECT");
+    let weather_summary = compact_weather(data.weather);
+    let filter_summary = data.controls.filter_summary();
+    let health_line = if let Some(monitor) = data.monitor {
+        let (led_color, label) = match monitor.health() {
+            ProjectHealth::Healthy => (Color::Green, "HEALTHY"),
+            ProjectHealth::Loading => (Color::Rgb(255, 165, 0), "LOADING"),
+            ProjectHealth::Error { message } => (Color::Red, message.as_str()),
+        };
+        let time_str = monitor
+            .last_update()
+            .map(|t| {
+                let elapsed = Instant::now().duration_since(t);
+                let elapsed = chrono::Duration::from_std(elapsed).unwrap_or_default();
+                let dt = Local::now() - elapsed;
+                dt.format("%H:%M").to_string()
+            })
+            .unwrap_or_else(|| "--:--".to_string());
+        let prefix = if matches!(monitor.health(), ProjectHealth::Error { .. }) {
+            "Error"
+        } else {
+            "Updated"
+        };
+        Line::from(vec![
+            Span::styled("● ", Style::default().fg(led_color)),
+            Span::styled(label, Style::default().fg(led_color)),
+            Span::raw(format!("  {prefix} {time_str}")),
+        ])
+    } else {
+        Line::from("")
+    };
+    frame.render_widget(
+        Paragraph::new(vec![
+            Line::from(vec![
+                Span::styled(" ◈ TASK VIEW ", bold(colors.primary)),
+                Span::styled(
+                    format!("// {project_name}"),
+                    Style::default().fg(colors.secondary),
+                ),
+                Span::raw("   "),
+                Span::styled(
+                    Local::now().format("%H:%M  %a %d %b").to_string(),
+                    bold(colors.accent),
+                ),
+                Span::raw("   "),
+                Span::styled(weather_summary, Style::default().fg(colors.dim)),
+            ]),
+            Line::from(vec![
+                Span::styled(
+                    format!(" GROUP: {} ", data.controls.group_by().label()),
+                    Style::default().fg(colors.secondary),
+                ),
+                Span::styled(
+                    format!(
+                        "// FILTERS: {}",
+                        if filter_summary.is_empty() {
+                            "None"
+                        } else {
+                            &filter_summary
+                        }
+                    ),
+                    Style::default().fg(colors.accent),
+                ),
+            ]),
+            health_line,
+        ])
+        .block(bordered(colors.secondary)),
+        rows[0],
+    );
+
+    let body = Layout::vertical([Constraint::Length(14), Constraint::Min(6)]).split(rows[1]);
+    let board = TaskBoard::new(&data.loaded.project);
+    let projection = TaskProjection::new(
+        &data.loaded.project,
+        data.controls.filters(),
+        data.controls.group_by(),
+    );
+    let selected_group = projection
+        .groups()
+        .iter()
+        .position(|group| {
+            group
+                .tasks
+                .iter()
+                .any(|task| data.selection.is_selected(task))
+        })
+        .unwrap_or(0);
+    let first_group = selected_group.saturating_sub(4);
+    let displayed_groups = projection
+        .groups()
+        .iter()
+        .skip(first_group)
+        .take(5)
+        .collect::<Vec<_>>();
+    if displayed_groups.is_empty() {
+        frame.render_widget(
+            Paragraph::new("No Tasks match active filters")
+                .alignment(Alignment::Center)
+                .block(bordered(colors.secondary).title(" TASKS ")),
+            body[0],
+        );
+    }
+    let columns = Layout::horizontal(vec![
+        Constraint::Ratio(
+            1,
+            displayed_groups.len().max(1) as u32
+        );
+        displayed_groups.len()
+    ])
+    .split(body[0]);
+    let changed_ids: Vec<&str> = data
+        .monitor
+        .map(|m| m.changed_task_ids().iter().map(String::as_str).collect())
+        .unwrap_or_default();
+    for (column, group) in columns.iter().zip(displayed_groups) {
+        let capacity = column.height.saturating_sub(2) as usize;
+        let selected_position = group
+            .tasks
+            .iter()
+            .position(|task| data.selection.is_selected(task));
+        let offset = selected_position
+            .map(|position| position.saturating_sub(capacity.saturating_sub(1)))
+            .unwrap_or(0);
+        let mut lines = Vec::new();
+        for task in group.tasks.iter().skip(offset).take(capacity) {
+            let current = board.is_current(task);
+            let selected = data.selection.is_selected(task);
+            let changed = changed_ids.contains(&task.id.as_str());
+            let marker = if current {
+                "◆"
+            } else if selected {
+                "▶"
+            } else {
+                "·"
+            };
+            let mut text = format!("{marker} {}", task.id);
+            if let Some(title) = &task.title {
+                text.push_str(&format!(" {title}"));
+            }
+            lines.push(Line::from(Span::styled(
+                text,
+                if current || selected {
+                    bold(colors.accent)
+                } else if changed {
+                    Style::default()
+                        .fg(colors.accent)
+                        .add_modifier(Modifier::BOLD)
+                } else {
+                    Style::default().fg(colors.dim)
+                },
+            )));
+        }
+        frame.render_widget(
+            Paragraph::new(lines).block(bordered(colors.secondary).title(format!(
+                " {} ({}) ",
+                group.label,
+                group.tasks.len()
+            ))),
+            *column,
+        );
+    }
+
+    let visible_ids = projection.visible_task_ids();
+    let notice = projection.current_task_notice();
+    let selected = data
+        .selection
+        .selected(&data.loaded.project)
+        .filter(|task| visible_ids.contains(&task.id.as_str()))
+        .or_else(|| projection.ordered_tasks().first().copied());
+    render_task_details(
+        frame,
+        body[1],
+        &data.loaded.project,
+        &board,
+        selected,
+        notice,
+        colors,
+    );
+    frame.render_widget(
+        Paragraph::new(Line::from(vec![
+            Span::styled("d", bold(colors.accent)),
+            Span::raw(" DASHBOARD   "),
+            Span::styled("t", bold(colors.accent)),
+            Span::raw(" TASKS   "),
+            Span::styled("r", bold(colors.accent)),
+            Span::raw(" REFRESH   "),
+            Span::styled("l", bold(colors.accent)),
+            Span::raw(" LOAD   "),
+            Span::styled("↑/↓", bold(colors.accent)),
+            Span::raw(" SELECT   "),
+            Span::styled("f/g", bold(colors.accent)),
+            Span::raw(" FILTER/GROUP   "),
+            Span::styled("?", bold(colors.accent)),
+            Span::raw(" HELP   "),
+            Span::styled("q", bold(colors.accent)),
+            Span::raw(" QUIT"),
+        ]))
+        .alignment(Alignment::Center)
+        .block(bordered(colors.secondary)),
+        rows[2],
+    );
+
+    if let Some(warning) = data.app.warning() {
+        frame.render_widget(
+            Paragraph::new(format!("⚠ {warning}")).style(Style::default().fg(Color::Yellow)),
+            Rect::new(
+                area.x + 2,
+                area.y + area.height - 5,
+                area.width.saturating_sub(4),
+                1,
+            ),
+        );
+    }
+}
+
+fn render_task_controls_menu(
+    frame: &mut Frame,
+    area: Rect,
+    controls: &TaskControls,
+    project: &crate::progress::Project,
+    colors: Palette,
+) {
+    frame.render_widget(Clear, area);
+    let lines = match controls.menu() {
+        TaskMenu::Closed => return,
+        TaskMenu::Filters => {
+            let tabs = [
+                crate::progress::FilterCategory::Status,
+                crate::progress::FilterCategory::Milestone,
+                crate::progress::FilterCategory::Phase,
+            ]
+            .into_iter()
+            .map(|category| {
+                if category == controls.filter_category() {
+                    format!("[{}]", category.label())
+                } else {
+                    category.label().to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("  ");
+            let mut lines = vec![
+                Line::from(Span::styled("FILTER TASKS", bold(colors.primary))),
+                Line::from(tabs),
+                Line::from(""),
+            ];
+            lines.extend(
+                controls
+                    .filter_options(project)
+                    .into_iter()
+                    .enumerate()
+                    .map(|(index, option)| {
+                        let cursor = if index == controls.filter_option_index() {
+                            ">"
+                        } else {
+                            " "
+                        };
+                        let check = if option.selected { "x" } else { " " };
+                        Line::from(format!("{cursor} [{check}] {}", option.label))
+                    }),
+            );
+            lines.push(Line::from(""));
+            lines.push(Line::from(
+                "←/→ category  ↑/↓ option  Enter toggle  Esc clear",
+            ));
+            lines
+        }
+        TaskMenu::Grouping => {
+            let mut lines = vec![
+                Line::from(Span::styled("GROUP TASKS", bold(colors.primary))),
+                Line::from(""),
+            ];
+            lines.extend(crate::progress::GroupBy::ALL.into_iter().enumerate().map(
+                |(index, group)| {
+                    let cursor = if index == controls.grouping_index() {
+                        ">"
+                    } else {
+                        " "
+                    };
+                    Line::from(format!("{cursor} {}", group.label()))
+                },
+            ));
+            lines.push(Line::from(""));
+            lines.push(Line::from("↑/↓ select  Enter apply  Esc clear filters"));
+            lines
+        }
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: true })
+            .block(bordered(colors.accent).title(" TASK VIEW CONTROLS ")),
+        area,
+    );
+}
+
+fn compact_weather(weather: &WeatherView) -> String {
+    match weather {
+        WeatherView::Loading => "● Weather loading".into(),
+        WeatherView::Ready { city, report } => {
+            format!("● {city}  {}°C  {}", report.temperature_c, report.condition)
+        }
+        WeatherView::Error {
+            last_good: Some((city, report)),
+            ..
+        } => {
+            format!("● STALE {city}  {}°C", report.temperature_c)
+        }
+        WeatherView::Error { .. } => "● Weather error".into(),
+    }
+}
+
+fn render_task_details<'a>(
+    frame: &mut Frame,
+    area: Rect,
+    project: &'a crate::progress::Project,
+    board: &TaskBoard<'a>,
+    task: Option<&'a ProjectTask>,
+    notice: Option<&str>,
+    colors: Palette,
+) {
+    let Some(task) = task else {
+        frame.render_widget(
+            Paragraph::new(notice.unwrap_or("No Tasks supplied by Progress File"))
+                .alignment(Alignment::Center)
+                .block(bordered(colors.secondary).title(" TASK DETAILS ")),
+            area,
+        );
+        return;
+    };
+    let mut lines = Vec::new();
+    if let Some(notice) = notice {
+        lines.push(Line::from(Span::styled(
+            notice,
+            Style::default().fg(Color::Yellow),
+        )));
+    }
+    lines.push(task_detail_heading(task, board.is_current(task), colors));
+    push_optional_detail(&mut lines, "Milestone", task.milestone.as_deref());
+    push_optional_detail(&mut lines, "Phase", task.phase.as_deref());
+    push_optional_detail(&mut lines, "Mode", task.mode.as_deref());
+    if !task.depends_on.is_empty() {
+        let dependencies = board
+            .dependencies(task)
+            .into_iter()
+            .map(|dependency| match dependency.status {
+                Some(status) => format!("{} [{}]", dependency.id, status.label()),
+                None => dependency.id.to_string(),
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(Line::from(format!("Depends: {dependencies}")));
+    }
+    push_optional_detail(&mut lines, "Notes", task.notes.as_deref());
+    push_optional_detail(&mut lines, "Verified", task.verified_at.as_deref());
+    if let Some(verification) = &task.verification {
+        lines.push(Line::from(format!("Verification: {verification}")));
+    }
+    push_optional_detail(&mut lines, "Verify", project.verify_command.as_deref());
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: true })
+            .block(bordered(colors.accent).title(" CURRENT TASK DETAILS ")),
+        area,
+    );
+}
+
+fn task_detail_heading<'a>(task: &'a ProjectTask, current: bool, colors: Palette) -> Line<'a> {
+    let title = task.title.as_deref().unwrap_or("");
+    Line::from(Span::styled(
+        format!(
+            "{}  {}  {title}",
+            if current { "CURRENT" } else { "SELECTED" },
+            task.id
+        ),
+        bold(colors.accent),
+    ))
+}
+
+fn push_optional_detail<'a>(lines: &mut Vec<Line<'a>>, label: &str, value: Option<&'a str>) {
+    if let Some(value) = value {
+        lines.push(Line::from(format!("{label}: {value}")));
+    }
+}
+
+fn render_load_menu(frame: &mut Frame, area: Rect, menu: &LoadProjectMenu, colors: Palette) {
+    frame.render_widget(Clear, area);
+    let lines = match menu.stage() {
+        LoadMenuStage::Closed => return,
+        LoadMenuStage::Choose => {
+            let new_marker = if menu.remembered_selected() { " " } else { ">" };
+            let mut lines = vec![
+                Line::from(Span::styled("LOAD PROGRESS FILE", bold(colors.primary))),
+                Line::from(""),
+                Line::from(format!("{new_marker} Load new path")),
+            ];
+            if let Some(path) = menu.remembered_project() {
+                let marker = if menu.remembered_selected() { ">" } else { " " };
+                lines.push(Line::from(format!(
+                    "{marker} Remembered: {}",
+                    path.display()
+                )));
+            }
+            lines.push(Line::from(""));
+            lines.push(Line::from("↑/↓ select  Enter confirm  Esc cancel"));
+            lines
+        }
+        LoadMenuStage::PathInput => vec![
+            Line::from(Span::styled(
+                "ENTER PROGRESS FILE PATH",
+                bold(colors.primary),
+            )),
+            Line::from(""),
+            Line::from(Span::styled(
+                format!("{}█", menu.path_draft()),
+                Style::default().fg(colors.accent),
+            )),
+            Line::from(""),
+            Line::from("Relative or absolute path  //  Enter load  Esc cancel"),
+        ],
+    };
+    frame.render_widget(
+        Paragraph::new(lines)
+            .wrap(Wrap { trim: true })
+            .block(bordered(colors.accent).title(" LOAD PROJECT ")),
+        area,
+    );
+}
+
 fn weather_lines<'a>(
     lines: &mut Vec<Line<'a>>,
     city: &'a str,
@@ -559,6 +1273,12 @@ fn render_help(frame: &mut Frame, area: Rect, colors: Palette) {
         key_line("s", "Toggle Settings", colors),
         key_line("w", "Refresh weather", colors),
         key_line("n", "Refresh news", colors),
+        key_line("r", "Refresh Progress File (Task View)", colors),
+        key_line("l", "Load Progress File", colors),
+        key_line("d / t", "Dashboard / Task View", colors),
+        key_line("Task arrows", "Select Task details", colors),
+        key_line("f / g", "Filter / group Tasks", colors),
+        key_line("Esc", "Clear Task filters", colors),
         key_line("Arrows / Enter", "Select / open headline", colors),
         key_line("q", "Quit immediately", colors),
     ])

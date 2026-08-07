@@ -64,6 +64,7 @@ pub struct Preferences {
     pub city: String,
     pub theme: Theme,
     pub reduced_motion: bool,
+    pub remembered_project: Option<PathBuf>,
 }
 
 impl Default for Preferences {
@@ -72,6 +73,7 @@ impl Default for Preferences {
             city: "Turku, Finland".into(),
             theme: Theme::SignatureNeon,
             reduced_motion: false,
+            remembered_project: None,
         }
     }
 }

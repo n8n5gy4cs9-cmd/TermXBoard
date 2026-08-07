@@ -4,9 +4,9 @@
 
 **Blocked by:** 07 — Status-first Task View.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The active Progress File is re-read every 60 seconds while Task View is active; `r` refreshes immediately.
-- [ ] Valid changes update the board, briefly highlight changed Tasks, and show an update timestamp.
-- [ ] Missing, partial, or malformed updates retain the last valid Project and show a red error LED/message.
-- [ ] Refresh scheduling, change detection, view exit, and recovery have automated tests.
+- [x] The active Progress File is re-read every 60 seconds while Task View is active; `r` refreshes immediately.
+- [x] Valid changes update the board, briefly highlight changed Tasks, and show an update timestamp.
+- [x] Missing, partial, or malformed updates retain the last valid Project and show a red error LED/message.
+- [x] Refresh scheduling, change detection, view exit, and recovery have automated tests.

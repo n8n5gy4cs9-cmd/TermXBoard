@@ -2,6 +2,7 @@
 
 pub mod news;
 pub mod preferences;
+pub mod progress;
 pub mod telemetry;
 pub mod ui;
 pub mod weather;
@@ -39,6 +40,13 @@ pub enum KeyCommand {
 pub enum AppAction {
     Continue,
     Quit,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum AppView {
+    #[default]
+    Dashboard,
+    Task,
 }
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -80,6 +88,7 @@ pub struct AppState {
     city_editing: bool,
     warning: Option<String>,
     weather_refresh_requested: bool,
+    view: AppView,
 }
 
 impl AppState {
@@ -100,6 +109,7 @@ impl AppState {
             city_untouched: true,
             city_editing: false,
             weather_refresh_requested: false,
+            view: AppView::Dashboard,
         }
     }
 
@@ -121,6 +131,19 @@ impl AppState {
 
     pub fn preferences(&self) -> &preferences::Preferences {
         &self.preferences
+    }
+
+    pub fn view(&self) -> AppView {
+        self.view
+    }
+
+    pub fn show_task_view(&mut self) {
+        self.view = AppView::Task;
+    }
+
+    pub fn remember_project(&mut self, path: std::path::PathBuf) {
+        self.preferences.remembered_project = Some(path);
+        self.preferences_changed = true;
     }
 
     pub fn city_draft(&self) -> &str {
@@ -240,6 +263,10 @@ impl AppState {
             }
             KeyCommand::Character('w') => {
                 self.weather_refresh_requested = true;
+                AppAction::Continue
+            }
+            KeyCommand::Character('d') => {
+                self.view = AppView::Dashboard;
                 AppAction::Continue
             }
             KeyCommand::Escape => {

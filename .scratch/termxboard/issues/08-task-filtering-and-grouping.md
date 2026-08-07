@@ -4,9 +4,9 @@
 
 **Blocked by:** 07 — Status-first Task View.
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] `f` supports multi-select status, Milestone, and Phase filters with OR within a category and AND across categories.
-- [ ] `g` groups by Task Status, Milestone, or Phase; sorting supports status-first behavior and agreed alternatives.
-- [ ] Active filters appear in the header; Escape clears filters.
-- [ ] Filtering, grouping, ordering, unknown values, and Current Task visibility have automated tests.
+- [x] `f` supports multi-select status, Milestone, and Phase filters with OR within a category and AND across categories.
+- [x] `g` groups by Task Status, Milestone, or Phase; sorting supports status-first behavior and agreed alternatives.
+- [x] Active filters appear in the header; Escape clears filters.
+- [x] Filtering, grouping, ordering, unknown values, and Current Task visibility have automated tests.

@@ -36,11 +36,31 @@ fn preferences_survive_restart() {
         city: "Helsinki, Finland".into(),
         theme: Theme::Nord,
         reduced_motion: true,
+        remembered_project: Some(PathBuf::from("/tmp/project/progress.json")),
     };
 
     assert!(store.save(&preferences).is_saved());
     assert_eq!(store.load().preferences, preferences);
 
+    let _ = fs::remove_dir_all(path.parent().expect("parent"));
+}
+
+#[test]
+fn remembered_project_path_survives_restart_without_becoming_active_state() {
+    let path = temp_config("remembered-project");
+    let store = PreferencesStore::new(path.clone());
+    let preferences = Preferences {
+        remembered_project: Some(PathBuf::from("/tmp/nodus/progress.json")),
+        ..Preferences::default()
+    };
+
+    assert!(store.save(&preferences).is_saved());
+    let loaded = store.load();
+
+    assert_eq!(
+        loaded.preferences.remembered_project,
+        preferences.remembered_project
+    );
     let _ = fs::remove_dir_all(path.parent().expect("parent"));
 }
 
