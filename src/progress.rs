@@ -16,9 +16,13 @@ const HIGHLIGHT_DURATION: Duration = Duration::from_secs(3);
 #[serde(rename_all = "kebab-case")]
 pub enum TaskStatus {
     Blocked,
+    #[serde(alias = "wip", alias = "in_progress", alias = "started", alias = "active")]
     InProgress,
+    #[serde(alias = "review", alias = "awaiting_review", alias = "user-review", alias = "user_review")]
     AwaitingReview,
+    #[serde(alias = "pending", alias = "not-started", alias = "open", alias = "backlog")]
     Todo,
+    #[serde(alias = "complete", alias = "completed", alias = "finished", alias = "closed")]
     Done,
 }
 

@@ -10,18 +10,66 @@
 //!   `userStories` with `acceptanceCriteria`, `passes`, `status`, `dependsOn`
 //!   and `evidence` on every Story).
 
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::progress::{Project, ProjectTask, TaskStatus};
+
+/// Deserializes an `Option<i64>` from a JSON number, float, or string.
+/// Returns `None` for JSON null or any value that cannot be coerced to i64.
+fn flexible_i64_opt<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(v.and_then(|v| match v {
+        serde_json::Value::Number(n) => n.as_i64().or_else(|| n.as_f64().map(|f| f as i64)),
+        serde_json::Value::String(s) => {
+            let trimmed = s.trim().trim_start_matches(|c: char| !c.is_ascii_digit() && c != '-');
+            trimmed.parse::<i64>().ok()
+        }
+        _ => None,
+    }))
+}
+
+/// Deserializes an `Option<String>` id that may be a JSON number or string.
+fn flexible_id<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = serde_json::Value::deserialize(deserializer)?;
+    Ok(match v {
+        serde_json::Value::String(s) => s,
+        serde_json::Value::Number(n) => n.to_string(),
+        other => other.to_string(),
+    })
+}
+
+/// Deserializes a phase that may be a JSON number (→ "P<n>") or a string.
+fn flexible_phase_opt<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(v.and_then(|v| match v {
+        serde_json::Value::Number(n) => n.as_i64().map(|n| format!("P{n}")),
+        serde_json::Value::String(s) if !s.trim().is_empty() => Some(s),
+        _ => None,
+    }))
+}
 
 /// Stored Task status values a PRD File may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PrdTaskStatus {
+    #[serde(alias = "pending", alias = "not-started", alias = "not_started", alias = "open")]
     Todo,
+    #[serde(alias = "wip", alias = "in_progress", alias = "started", alias = "active")]
     InProgress,
+    #[serde(alias = "complete", alias = "completed", alias = "finished", alias = "closed")]
     Done,
+    #[serde(alias = "failed", alias = "cancelled", alias = "canceled")]
     Error,
+    #[serde(alias = "deferred", alias = "on-hold", alias = "on_hold", alias = "waiting")]
     Blocked,
 }
 
@@ -52,10 +100,13 @@ impl PrdTaskStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct PrdTask {
+    #[serde(deserialize_with = "flexible_id")]
     pub id: String,
+    #[serde(default)]
     pub status: PrdTaskStatus,
     pub title: Option<String>,
-    pub phase: Option<i64>,
+    #[serde(default, deserialize_with = "flexible_phase_opt")]
+    pub phase: Option<String>,
     #[serde(default)]
     pub deps: Vec<String>,
     #[serde(default)]
@@ -63,6 +114,7 @@ pub struct PrdTask {
     #[serde(default)]
     pub acceptance: Vec<String>,
     pub verify: Option<String>,
+    #[serde(default, deserialize_with = "flexible_i64_opt")]
     pub est_minutes: Option<i64>,
     pub model_hint: Option<String>,
     pub started_at: Option<String>,
@@ -132,8 +184,7 @@ impl Prd {
         let current_phase = current_task
             .as_ref()
             .and_then(|id| self.tasks.iter().find(|task| task.id == *id))
-            .and_then(|task| task.phase)
-            .map(phase_label);
+            .and_then(|task| task.phase.clone());
         let mut definition_of_done = Vec::new();
         if let Some(goal) = &self.goal {
             definition_of_done.push(format!("Goal: {goal}"));
@@ -179,13 +230,19 @@ impl Prd {
     }
 }
 
+impl Default for PrdTaskStatus {
+    fn default() -> Self {
+        Self::Todo
+    }
+}
+
 impl PrdTask {
     /// Adapts this PRD Task into the Task the board and details pane render.
     pub fn into_project_task(self) -> ProjectTask {
         ProjectTask {
             status: self.status.as_task_status(),
             milestone: None,
-            phase: self.phase.map(phase_label),
+            phase: self.phase.clone(),
             mode: self.model_hint.clone(),
             depends_on: self.deps.clone(),
             scope_note: (!self.acceptance.is_empty()).then(|| self.acceptance.join("; ")),
@@ -230,18 +287,19 @@ fn trimmed(value: Option<&str>) -> Option<&str> {
     value.map(str::trim).filter(|value| !value.is_empty())
 }
 
-fn phase_label(phase: i64) -> String {
-    format!("P{phase}")
-}
-
 /// Stored Story status values a user-story PRD File may use.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum UserStoryStatus {
+    #[serde(alias = "complete", alias = "completed", alias = "finished", alias = "closed")]
     Done,
+    #[serde(alias = "in-progress", alias = "wip", alias = "started", alias = "active")]
     InProgress,
+    #[serde(alias = "pending", alias = "not-started", alias = "not_started", alias = "open")]
     Todo,
+    #[serde(alias = "on-hold", alias = "on_hold", alias = "deferred", alias = "waiting")]
     Blocked,
+    #[serde(alias = "failed", alias = "cancelled", alias = "canceled")]
     Error,
 }
 
@@ -259,6 +317,7 @@ impl UserStoryStatus {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct UserStoryEvidence {
+    #[serde(default, deserialize_with = "flexible_i64_opt")]
     pub criterion: Option<i64>,
     pub result: Option<String>,
     pub detail: Option<String>,
@@ -273,6 +332,7 @@ pub struct UserStory {
     pub description: Option<String>,
     #[serde(default)]
     pub acceptance_criteria: Vec<String>,
+    #[serde(default, deserialize_with = "flexible_i64_opt")]
     pub priority: Option<i64>,
     #[serde(default)]
     pub passes: bool,
@@ -290,6 +350,7 @@ pub struct UserStory {
 pub struct UserStoryPrd {
     pub project: Option<String>,
     pub description: Option<String>,
+    #[serde(default, deserialize_with = "flexible_i64_opt")]
     pub schema_version: Option<i64>,
     pub branch_name: Option<String>,
     pub schema_source: Option<String>,
