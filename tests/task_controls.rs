@@ -18,7 +18,7 @@ fn project() -> Project {
 }
 
 #[test]
-fn filter_menu_multi_selects_categories_and_escape_clears() {
+fn escape_closes_filter_menu_and_c_clears_filters_only_while_it_is_open() {
     let project = project();
     let mut controls = TaskControls::default();
 
@@ -37,8 +37,16 @@ fn filter_menu_multi_selects_categories_and_escape_clears() {
     assert!(controls.filter_summary().contains("Milestone=M1"));
 
     controls.handle_key(KeyCommand::Escape, &project);
-    assert!(controls.filters().is_empty());
     assert_eq!(controls.menu(), TaskMenu::Closed);
+    assert!(!controls.filters().is_empty());
+
+    controls.handle_key(KeyCommand::Character('c'), &project);
+    assert!(!controls.filters().is_empty());
+
+    controls.handle_key(KeyCommand::Character('f'), &project);
+    controls.handle_key(KeyCommand::Character('c'), &project);
+    assert!(controls.filters().is_empty());
+    assert_eq!(controls.menu(), TaskMenu::Filters);
 }
 
 #[test]

@@ -1,0 +1,23 @@
+{
+  "$schema": "./progress.schema.json",
+  "project": "termxboard-web",
+  "version": "0.1.0",
+  "updatedAt": "2026-08-11T09:00:00Z",
+  "currentTask": "T-2",
+  "currentPhase": "P1",
+  "verifyCommand": "cargo test",
+  "definitionOfDone": ["Tests pass", "Requested behavior is verified"],
+  "milestones": [
+    { "id": "M1", "name": "Working foundation", "status": "in-progress", "exit": "Core workflow works end to end", "note": null }
+  ],
+  "tasks": [
+    { "id": "T-1", "title": "Repair sensor fault handling", "status": "blocked", "milestone": "M1", "phase": "P0", "mode": "Think High", "dependsOn": [], "scopeNote": "Only the sensor path", "filesChanged": ["src/sensor.rs"], "notes": "Waiting on hardware spec", "verifiedAt": null, "verification": null },
+    { "id": "T-2", "title": "Render command deck", "status": "in-progress", "milestone": "M1", "phase": "P1", "mode": "Think High", "dependsOn": ["T-1"], "scopeNote": null, "filesChanged": ["src/ui.rs"], "notes": "Layout in progress", "verifiedAt": null, "verification": null },
+    { "id": "T-3", "title": "Review visual state machine", "status": "awaiting-review", "milestone": "M1", "phase": "P1", "mode": "Review", "dependsOn": ["T-2"], "scopeNote": null, "filesChanged": ["src/visuals.rs"], "notes": "Ready for human review", "verifiedAt": null, "verification": null },
+    { "id": "T-4", "title": "Wire fallback mode", "status": "todo", "milestone": "M1", "phase": "P2", "mode": "Think", "dependsOn": ["T-2"], "scopeNote": null, "filesChanged": [], "notes": null, "verifiedAt": null, "verification": null },
+    { "id": "T-5", "title": "Ship release", "status": "done", "milestone": "M1", "phase": "P2", "mode": "Ship", "dependsOn": [], "scopeNote": null, "filesChanged": ["Cargo.toml", "CHANGELOG.md"], "notes": "Released v0.1.0", "verifiedAt": "2026-08-10T18:00:00Z", "verification": { "command": "cargo test", "result": "passed" } },
+    { "id": "T-6", "title": "Add telemetry panel", "status": "todo", "milestone": "M1", "phase": "P2", "mode": "Think", "dependsOn": ["T-3"], "scopeNote": null, "filesChanged": [], "notes": null, "verifiedAt": null, "verification": null }
+  ],
+  "followUps": [],
+  "notes": []
+}

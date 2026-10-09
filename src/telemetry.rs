@@ -38,9 +38,45 @@ pub enum LedState {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct MetricCard {
+    /// Stable metric identity used for layout and coloring.
+    pub kind: MetricKind,
     pub label: &'static str,
     pub value: String,
     pub led: LedState,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// Stable identity of a telemetry card.
+pub enum MetricKind {
+    Cpu,
+    Memory,
+    Battery,
+    Disk,
+    Network,
+    Uptime,
+}
+
+impl MetricKind {
+    const ALL: [Self; 6] = [
+        Self::Cpu,
+        Self::Memory,
+        Self::Battery,
+        Self::Disk,
+        Self::Network,
+        Self::Uptime,
+    ];
+
+    /// Short display label for the metric.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Cpu => "CPU",
+            Self::Memory => "MEMORY",
+            Self::Battery => "BATTERY",
+            Self::Disk => "DISK",
+            Self::Network => "NETWORK",
+            Self::Uptime => "UPTIME",
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +188,8 @@ pub struct TelemetryMonitor {
     next_refresh: Instant,
     in_flight: bool,
     last_good: Option<TelemetrySnapshot>,
+    cpu_history: Vec<u64>,
+    memory_history: Vec<u64>,
 }
 
 impl TelemetryMonitor {
@@ -180,6 +218,8 @@ impl TelemetryMonitor {
             next_refresh: now,
             in_flight: false,
             last_good: None,
+            cpu_history: Vec::with_capacity(30),
+            memory_history: Vec::with_capacity(30),
         }
     }
 
@@ -187,11 +227,32 @@ impl TelemetryMonitor {
         &self.view
     }
 
+    /// Recent normalized CPU samples for the dashboard sparkline.
+    pub fn cpu_history(&self) -> &[u64] {
+        &self.cpu_history
+    }
+
+    /// Recent normalized memory samples for the dashboard sparkline.
+    pub fn memory_history(&self) -> &[u64] {
+        &self.memory_history
+    }
+
     pub fn tick(&mut self, now: Instant) {
         while let Ok(result) = self.result_receiver.try_recv() {
             self.in_flight = false;
             self.view = match result {
                 Ok(snapshot) => {
+                    if let Some(cpu) = snapshot.cpu_percent {
+                        push_history(&mut self.cpu_history, cpu.clamp(0.0, 100.0).round() as u64);
+                    }
+                    if let Some(memory) = snapshot.memory
+                        && memory.total_bytes > 0
+                    {
+                        push_history(
+                            &mut self.memory_history,
+                            memory.used_bytes.saturating_mul(100) / memory.total_bytes,
+                        );
+                    }
                     self.last_good = Some(snapshot);
                     TelemetryView::Ready(snapshot)
                 }
@@ -215,6 +276,13 @@ impl TelemetryMonitor {
     }
 }
 
+fn push_history(history: &mut Vec<u64>, value: u64) {
+    if history.len() == 30 {
+        history.remove(0);
+    }
+    history.push(value);
+}
+
 impl Drop for TelemetryMonitor {
     fn drop(&mut self) {
         let _ = self.command_sender.send(WorkerCommand::Stop);
@@ -223,8 +291,6 @@ impl Drop for TelemetryMonitor {
         }
     }
 }
-
-const LABELS: [&str; 6] = ["CPU", "MEMORY", "BATTERY", "DISK", "NETWORK", "UPTIME"];
 
 impl TelemetryView {
     pub fn loading() -> Self {
@@ -274,10 +340,11 @@ impl TelemetryView {
 }
 
 fn uniform_cards(value: &str, led: LedState) -> Vec<MetricCard> {
-    LABELS
+    MetricKind::ALL
         .into_iter()
-        .map(|label| MetricCard {
-            label,
+        .map(|kind| MetricCard {
+            kind,
+            label: kind.label(),
             value: value.to_string(),
             led,
         })
@@ -287,56 +354,58 @@ fn uniform_cards(value: &str, led: LedState) -> Vec<MetricCard> {
 fn ready_cards(snapshot: TelemetrySnapshot) -> Vec<MetricCard> {
     vec![
         match snapshot.cpu_percent {
-            Some(value) => available("CPU", format!("{value:.0}%")),
-            None => unavailable("CPU"),
+            Some(value) => available(MetricKind::Cpu, format!("{value:.0}%")),
+            None => unavailable(MetricKind::Cpu),
         },
         match snapshot.memory {
             Some(value) => available(
-                "MEMORY",
+                MetricKind::Memory,
                 format_capacity_pair(value.used_bytes, value.total_bytes),
             ),
-            None => unavailable("MEMORY"),
+            None => unavailable(MetricKind::Memory),
         },
         match snapshot.battery_percent {
-            Some(percent) => available("BATTERY", format!("{percent:.0}%")),
-            None => unavailable("BATTERY"),
+            Some(percent) => available(MetricKind::Battery, format!("{percent:.0}%")),
+            None => unavailable(MetricKind::Battery),
         },
         match snapshot.disk {
             Some(value) => available(
-                "DISK",
+                MetricKind::Disk,
                 format_capacity_pair(value.used_bytes, value.total_bytes),
             ),
-            None => unavailable("DISK"),
+            None => unavailable(MetricKind::Disk),
         },
         match snapshot.network {
             Some(value) => available(
-                "NETWORK",
+                MetricKind::Network,
                 format!(
                     "↓ {}  ↑ {}",
                     format_bytes(value.received_bytes),
                     format_bytes(value.transmitted_bytes)
                 ),
             ),
-            None => unavailable("NETWORK"),
+            None => unavailable(MetricKind::Network),
         },
         match snapshot.uptime {
-            Some(value) => available("UPTIME", format_uptime(value)),
-            None => unavailable("UPTIME"),
+            Some(value) => available(MetricKind::Uptime, format_uptime(value)),
+            None => unavailable(MetricKind::Uptime),
         },
     ]
 }
 
-fn available(label: &'static str, value: String) -> MetricCard {
+fn available(kind: MetricKind, value: String) -> MetricCard {
     MetricCard {
-        label,
+        kind,
+        label: kind.label(),
         value,
         led: LedState::Green,
     }
 }
 
-fn unavailable(label: &'static str) -> MetricCard {
+fn unavailable(kind: MetricKind) -> MetricCard {
     MetricCard {
-        label,
+        kind,
+        label: kind.label(),
         value: "Unavailable".into(),
         led: LedState::Red,
     }

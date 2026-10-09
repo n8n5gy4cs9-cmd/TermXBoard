@@ -1,0 +1,54 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://termxboard.local/progress.schema.json",
+  "title": "TermXBoard progress.json",
+  "type": "object",
+  "required": ["tasks"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "project": { "type": ["string", "null"] },
+    "version": { "type": ["string", "null"] },
+    "updatedAt": { "type": ["string", "null"], "description": "RFC 3339 UTC preferred" },
+    "currentTask": { "type": ["string", "null"] },
+    "currentPhase": { "type": ["string", "null"] },
+    "verifyCommand": { "type": ["string", "null"] },
+    "definitionOfDone": { "type": "array", "items": { "type": "string" } },
+    "milestones": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": { "type": "string" },
+          "name": { "type": ["string", "null"] },
+          "status": { "type": ["string", "null"] },
+          "exit": { "type": ["string", "null"] },
+          "note": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "followUps": { "type": "array" },
+    "notes": { "type": "array" },
+    "tasks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["id", "status"],
+        "properties": {
+          "id": { "type": "string", "minLength": 1 },
+          "status": { "enum": ["blocked", "in-progress", "awaiting-review", "todo", "done"] },
+          "title": { "type": ["string", "null"] },
+          "milestone": { "type": ["string", "null"] },
+          "phase": { "type": ["string", "null"] },
+          "mode": { "type": ["string", "null"] },
+          "dependsOn": { "type": "array", "items": { "type": "string" } },
+          "scopeNote": { "type": ["string", "null"] },
+          "filesChanged": { "type": "array", "items": { "type": "string" } },
+          "notes": { "type": ["string", "null"] },
+          "verifiedAt": { "type": ["string", "null"] },
+          "verification": {}
+        }
+      }
+    }
+  }
+}

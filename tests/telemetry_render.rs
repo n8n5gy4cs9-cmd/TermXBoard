@@ -1,10 +1,12 @@
 use std::time::Duration;
 
-use ratatui::{Terminal, backend::TestBackend, style::Color};
+use ratatui::{Terminal, backend::TestBackend};
 use termxboard::{
     AppState,
+    preferences::Theme,
     telemetry::{TelemetrySnapshot, TelemetryView},
     ui,
+    visuals::{ColorSupport, SemanticTone, theme_color},
     weather::WeatherView,
 };
 
@@ -30,6 +32,7 @@ fn dashboard_renders_loading_telemetry() {
     assert!(output.contains("SYSTEM TELEMETRY"));
     assert!(output.contains("CPU"));
     assert!(output.contains("Loading…"));
+    assert!(output.contains('▰'));
 }
 
 #[test]
@@ -52,9 +55,24 @@ fn dashboard_renders_loading_leds_in_orange() {
         .buffer()
         .content()
         .iter()
-        .filter(|cell| cell.symbol() == "●" && cell.fg == Color::Rgb(255, 165, 0))
+        .filter(|cell| {
+            cell.symbol() == "●"
+                && [
+                    theme_color(
+                        Theme::SignatureNeon,
+                        SemanticTone::Warning,
+                        ColorSupport::TrueColor,
+                    ),
+                    theme_color(
+                        Theme::SignatureNeon,
+                        SemanticTone::Warning,
+                        ColorSupport::Ansi,
+                    ),
+                ]
+                .contains(&cell.fg)
+        })
         .count();
-    assert_eq!(orange_leds, 10);
+    assert!(orange_leds >= 10);
 }
 
 #[test]

@@ -58,12 +58,52 @@ impl Theme {
     }
 }
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+/// Glyph set used for icons and terminal decoration.
+pub enum VisualMode {
+    #[default]
+    Unicode,
+    NerdFont,
+    Ascii,
+}
+
+impl VisualMode {
+    /// All selectable glyph presets.
+    pub const ALL: [Self; 3] = [Self::Unicode, Self::NerdFont, Self::Ascii];
+
+    /// Human-readable preset name.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Unicode => "Unicode",
+            Self::NerdFont => "Nerd Font",
+            Self::Ascii => "ASCII",
+        }
+    }
+
+    /// Next preset in menu order.
+    pub fn next(self) -> Self {
+        let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0);
+        Self::ALL[(index + 1) % Self::ALL.len()]
+    }
+
+    /// Previous preset in menu order.
+    pub fn previous(self) -> Self {
+        let index = Self::ALL.iter().position(|mode| *mode == self).unwrap_or(0);
+        Self::ALL[(index + Self::ALL.len() - 1) % Self::ALL.len()]
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct Preferences {
     pub city: String,
     pub theme: Theme,
     pub reduced_motion: bool,
+    /// Preferred icon and decoration glyph set.
+    pub visual_mode: VisualMode,
+    /// Play a bleep when the Task list changes. Off unless switched on here.
+    pub task_sound: bool,
     pub remembered_project: Option<PathBuf>,
 }
 
@@ -73,6 +113,8 @@ impl Default for Preferences {
             city: "Turku, Finland".into(),
             theme: Theme::SignatureNeon,
             reduced_motion: false,
+            visual_mode: VisualMode::Unicode,
+            task_sound: false,
             remembered_project: None,
         }
     }

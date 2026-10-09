@@ -5,8 +5,8 @@ use std::{
 };
 
 use termxboard::progress::{
-    GroupBy, ProjectHealth, ProjectMonitor, REFRESH_INTERVAL, TaskFilters, TaskProjection,
-    TaskSelection, load_progress_file,
+    GroupBy, ProjectActivity, ProjectHealth, ProjectMonitor, REFRESH_INTERVAL, TaskFilters,
+    TaskProjection, TaskSelection, load_progress_file,
 };
 
 fn temp_dir(name: &str) -> PathBuf {
@@ -15,6 +15,65 @@ fn temp_dir(name: &str) -> PathBuf {
         .expect("clock")
         .as_nanos();
     std::env::temp_dir().join(format!("termxboard-refresh-{name}-{nonce}"))
+}
+
+#[test]
+fn refresh_presentation_counts_down_only_during_final_ten_seconds() {
+    let directory = temp_dir("countdown");
+    fs::create_dir_all(&directory).expect("temp dir");
+    let path = directory.join("progress.json");
+    write_fixture(&path, &project_json("Test", &simple_tasks()));
+    let loaded = load_progress_file(&path, &directory).expect("load");
+    let start = Instant::now();
+    let monitor = ProjectMonitor::new(&loaded, REFRESH_INTERVAL, start);
+
+    assert_eq!(
+        monitor.activity_at(start + Duration::from_secs(49)),
+        ProjectActivity::Healthy
+    );
+    assert_eq!(
+        monitor.activity_at(start + Duration::from_millis(50_001)),
+        ProjectActivity::Countdown(10)
+    );
+    assert_eq!(
+        monitor.activity_at(start + Duration::from_millis(59_999)),
+        ProjectActivity::Countdown(1)
+    );
+
+    let _ = fs::remove_dir_all(directory);
+}
+
+#[test]
+fn successful_refresh_shows_updating_for_600ms_without_drifting_schedule() {
+    let directory = temp_dir("updating-feedback");
+    fs::create_dir_all(&directory).expect("temp dir");
+    let path = directory.join("progress.json");
+    write_fixture(&path, &project_json("Test", &simple_tasks()));
+    let loaded = load_progress_file(&path, &directory).expect("load");
+    let start = Instant::now();
+    let mut monitor = ProjectMonitor::new(&loaded, REFRESH_INTERVAL, start);
+    let refresh_started = start + Duration::from_secs(5);
+
+    monitor.refresh_now(refresh_started);
+
+    assert_eq!(
+        monitor.activity_at(refresh_started),
+        ProjectActivity::Updating
+    );
+    assert_eq!(
+        monitor.activity_at(refresh_started + Duration::from_millis(599)),
+        ProjectActivity::Updating
+    );
+    assert_eq!(
+        monitor.activity_at(refresh_started + Duration::from_millis(600)),
+        ProjectActivity::Healthy
+    );
+    assert_eq!(
+        monitor.activity_at(refresh_started + Duration::from_secs(50)),
+        ProjectActivity::Countdown(10)
+    );
+
+    let _ = fs::remove_dir_all(directory);
 }
 
 fn project_json(project: &str, tasks: &str) -> String {
@@ -79,6 +138,14 @@ fn no_scheduled_refresh_on_dashboard_then_resumes_in_task_view() {
     assert_eq!(monitor.last_update(), Some(start));
 
     monitor.tick(past_interval + Duration::from_millis(1), true);
+    assert_eq!(
+        monitor.last_update(),
+        Some(past_interval + Duration::from_millis(1))
+    );
+    assert_eq!(
+        monitor.activity_at(past_interval + Duration::from_millis(1)),
+        ProjectActivity::Updating
+    );
 
     let _ = fs::remove_dir_all(directory);
 }
@@ -263,7 +330,7 @@ fn later_valid_file_clears_error_and_recovers() {
     );
     monitor.refresh_now(start + Duration::from_secs(2));
 
-    assert_eq!(monitor.health(), &ProjectHealth::Healthy);
+    assert_eq!(monitor.health(), &ProjectHealth::Recovered);
     assert_eq!(
         monitor.active().unwrap().project.project.as_deref(),
         Some("Recovered")

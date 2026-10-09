@@ -6,7 +6,7 @@ use std::{
 
 use termxboard::{
     AppState, KeyCommand, SettingsField,
-    preferences::{Preferences, PreferencesStore, SaveOutcome, Theme},
+    preferences::{Preferences, PreferencesStore, SaveOutcome, Theme, VisualMode},
 };
 
 fn temp_config(name: &str) -> PathBuf {
@@ -26,6 +26,7 @@ fn first_run_uses_turku_and_signature_theme() {
     assert_eq!(loaded.preferences.city, "Turku, Finland");
     assert_eq!(loaded.preferences.theme, Theme::SignatureNeon);
     assert!(!loaded.preferences.reduced_motion);
+    assert_eq!(loaded.preferences.visual_mode, VisualMode::Unicode);
 }
 
 #[test]
@@ -36,6 +37,7 @@ fn preferences_survive_restart() {
         city: "Helsinki, Finland".into(),
         theme: Theme::Nord,
         reduced_motion: true,
+        visual_mode: VisualMode::NerdFont,
         remembered_project: Some(PathBuf::from("/tmp/project/progress.json")),
     };
 

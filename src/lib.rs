@@ -1,10 +1,13 @@
 //! TermXBoard's behavior seams.
 
 pub mod news;
+pub mod prd;
 pub mod preferences;
 pub mod progress;
+pub mod sound;
 pub mod telemetry;
 pub mod ui;
+pub mod visuals;
 pub mod weather;
 
 pub const MIN_WIDTH: u16 = 110;
@@ -55,6 +58,8 @@ pub enum SettingsField {
     City,
     Theme,
     ReducedMotion,
+    VisualMode,
+    TaskSound,
 }
 
 impl SettingsField {
@@ -62,15 +67,19 @@ impl SettingsField {
         match self {
             Self::City => Self::Theme,
             Self::Theme => Self::ReducedMotion,
-            Self::ReducedMotion => Self::City,
+            Self::ReducedMotion => Self::VisualMode,
+            Self::VisualMode => Self::TaskSound,
+            Self::TaskSound => Self::City,
         }
     }
 
     fn previous(self) -> Self {
         match self {
-            Self::City => Self::ReducedMotion,
+            Self::City => Self::TaskSound,
             Self::Theme => Self::City,
             Self::ReducedMotion => Self::Theme,
+            Self::VisualMode => Self::ReducedMotion,
+            Self::TaskSound => Self::VisualMode,
         }
     }
 }
@@ -197,6 +206,16 @@ impl AppState {
             SettingsField::ReducedMotion => {
                 self.preferences.reduced_motion = !self.preferences.reduced_motion;
             }
+            SettingsField::VisualMode => {
+                self.preferences.visual_mode = if forward {
+                    self.preferences.visual_mode.next()
+                } else {
+                    self.preferences.visual_mode.previous()
+                };
+            }
+            SettingsField::TaskSound => {
+                self.preferences.task_sound = !self.preferences.task_sound;
+            }
         }
         self.preferences_changed = true;
     }
@@ -251,7 +270,7 @@ impl AppState {
         }
 
         match key {
-            KeyCommand::Character('?') => {
+            KeyCommand::Character('h') => {
                 self.help_visible = !self.help_visible;
                 self.settings_visible = false;
                 AppAction::Continue

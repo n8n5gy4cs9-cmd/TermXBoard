@@ -1,0 +1,74 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Set up project scaffold",
+        "description": "Create the base app shell, tooling and CI.",
+        "details": "Init repo, add linting, wire a minimal CI pipeline that runs on every push.",
+        "testStrategy": "CI passes on a trivial commit.",
+        "status": "done",
+        "priority": "high",
+        "dependencies": [],
+        "subtasks": [
+          { "id": 1, "title": "Init repo + tooling", "status": "done", "dependencies": [] },
+          { "id": 2, "title": "Add CI pipeline", "status": "done", "dependencies": [1] }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Vertical slice: create task",
+        "description": "Thin tracer bullet through schema, API, UI and tests for creating a task.",
+        "details": "Add DB migration, service, POST /tasks endpoint, a form, and an e2e test.",
+        "testStrategy": "e2e: create a task and see it listed.",
+        "status": "in-progress",
+        "priority": "high",
+        "dependencies": [1],
+        "subtasks": [
+          { "id": 1, "title": "Schema + migration", "status": "done", "dependencies": [] },
+          { "id": 2, "title": "Service + API", "status": "in-progress", "dependencies": [1] },
+          { "id": 3, "title": "UI form", "status": "pending", "dependencies": [2] },
+          { "id": 4, "title": "e2e test", "status": "pending", "dependencies": [3] }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Vertical slice: list & filter tasks",
+        "description": "Read path with filtering.",
+        "details": "GET /tasks with query filters, list UI, pagination.",
+        "testStrategy": "Unit tests on filter logic; e2e on list render.",
+        "status": "review",
+        "priority": "medium",
+        "dependencies": [2],
+        "subtasks": []
+      },
+      {
+        "id": 4,
+        "title": "Auth hardening",
+        "description": "Rate limiting and session rotation.",
+        "details": "Deferred until after MVP demo.",
+        "testStrategy": "Load test + security review.",
+        "status": "deferred",
+        "priority": "low",
+        "dependencies": [2],
+        "subtasks": []
+      },
+      {
+        "id": 5,
+        "title": "Legacy CSV import",
+        "description": "Dropped from scope.",
+        "details": "Superseded by the API import path.",
+        "testStrategy": "n/a",
+        "status": "cancelled",
+        "priority": "low",
+        "dependencies": [],
+        "subtasks": []
+      }
+    ],
+    "metadata": {
+      "created": "2026-08-01T09:00:00Z",
+      "updated": "2026-08-11T09:00:00Z",
+      "description": "demo-prd"
+    }
+  }
+}

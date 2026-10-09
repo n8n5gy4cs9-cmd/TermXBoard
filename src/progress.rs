@@ -115,17 +115,33 @@ pub fn load_progress_file(
     };
     let contents = fs::read_to_string(&resolved)
         .map_err(|error| format!("could not read {}: {error}", resolved.display()))?;
-    let project: Project = serde_json::from_str(&contents).map_err(|error| {
-        let kind = match error.classify() {
-            serde_json::error::Category::Data => "missing required data or invalid value",
-            _ => "malformed JSON",
-        };
-        format!("{kind} in {}: {error}", resolved.display())
-    })?;
+    let project = parse_project_document(&contents, &resolved)?;
     validate_project(&project)?;
     let path = fs::canonicalize(&resolved)
         .map_err(|error| format!("could not resolve {}: {error}", resolved.display()))?;
     Ok(LoadedProject { path, project })
+}
+
+/// Reads a native Progress File, a classic PRD File, or a user-story PRD File
+/// into the Project model.
+fn parse_project_document(contents: &str, resolved: &Path) -> Result<Project, String> {
+    if crate::prd::looks_like_user_story_prd(contents) {
+        return crate::prd::parse_user_story_prd(contents)
+            .map_err(|error| describe_parse_error(&error, resolved));
+    }
+    if crate::prd::looks_like_prd(contents) {
+        return crate::prd::parse(contents)
+            .map_err(|error| describe_parse_error(&error, resolved));
+    }
+    serde_json::from_str(contents).map_err(|error| describe_parse_error(&error, resolved))
+}
+
+fn describe_parse_error(error: &serde_json::Error, resolved: &Path) -> String {
+    let kind = match error.classify() {
+        serde_json::error::Category::Data => "missing required data or invalid value",
+        _ => "malformed JSON",
+    };
+    format!("{kind} in {}: {error}", resolved.display())
 }
 
 fn validate_project(project: &Project) -> Result<(), String> {
@@ -753,8 +769,11 @@ impl TaskControls {
                 return;
             }
             KeyCommand::Escape => {
-                self.filters.clear();
                 self.menu = TaskMenu::Closed;
+                return;
+            }
+            KeyCommand::Character('c') if self.menu == TaskMenu::Filters => {
+                self.filters.clear();
                 return;
             }
             _ => {}
@@ -855,8 +874,19 @@ fn facet_choices(
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProjectHealth {
     Healthy,
+    Recovered,
     Loading,
     Error { message: String },
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// User-visible refresh activity at a supplied instant.
+pub enum ProjectActivity {
+    Healthy,
+    Recovered,
+    Updating,
+    Countdown(u64),
+    Error,
 }
 
 pub struct ProjectMonitor {
@@ -868,6 +898,7 @@ pub struct ProjectMonitor {
     last_update: Option<Instant>,
     changed_task_ids: Vec<String>,
     highlight_until: Option<Instant>,
+    updating_until: Option<Instant>,
 }
 
 impl ProjectMonitor {
@@ -881,6 +912,7 @@ impl ProjectMonitor {
             last_update: Some(now),
             changed_task_ids: Vec::new(),
             highlight_until: None,
+            updating_until: None,
         }
     }
 
@@ -911,6 +943,26 @@ impl ProjectMonitor {
         }
     }
 
+    /// Returns countdown, feedback, recovery, or error presentation state.
+    pub fn activity_at(&self, now: Instant) -> ProjectActivity {
+        if matches!(self.health, ProjectHealth::Error { .. }) {
+            return ProjectActivity::Error;
+        }
+        if self.updating_until.is_some_and(|until| now < until) {
+            return ProjectActivity::Updating;
+        }
+        let remaining = self.next_refresh.saturating_duration_since(now);
+        if !remaining.is_zero() && remaining <= Duration::from_secs(10) {
+            let seconds = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
+            return ProjectActivity::Countdown(seconds.max(1));
+        }
+        if matches!(self.health, ProjectHealth::Recovered) {
+            ProjectActivity::Recovered
+        } else {
+            ProjectActivity::Healthy
+        }
+    }
+
     pub fn reset(&mut self, loaded: &LoadedProject, now: Instant) {
         self.last_good = Some(loaded.clone());
         self.file_path = loaded.path.clone();
@@ -919,6 +971,7 @@ impl ProjectMonitor {
         self.last_update = Some(now);
         self.changed_task_ids.clear();
         self.highlight_until = None;
+        self.updating_until = None;
     }
 
     pub fn tick(&mut self, now: Instant, task_view_active: bool) {
@@ -938,6 +991,8 @@ impl ProjectMonitor {
 
     fn perform_refresh(&mut self, now: Instant) {
         self.next_refresh = now + self.interval;
+        self.updating_until = Some(now + Duration::from_millis(600));
+        let recovering = matches!(self.health, ProjectHealth::Error { .. });
         self.health = ProjectHealth::Loading;
         match load_progress_file(&self.file_path, "") {
             Ok(loaded) => {
@@ -948,7 +1003,11 @@ impl ProjectMonitor {
                     .unwrap_or_default();
                 self.last_good = Some(loaded);
                 self.last_update = Some(now);
-                self.health = ProjectHealth::Healthy;
+                self.health = if recovering {
+                    ProjectHealth::Recovered
+                } else {
+                    ProjectHealth::Healthy
+                };
                 if !changed.is_empty() {
                     self.changed_task_ids = changed;
                     self.highlight_until = Some(now + HIGHLIGHT_DURATION);
@@ -956,6 +1015,7 @@ impl ProjectMonitor {
             }
             Err(message) => {
                 self.health = ProjectHealth::Error { message };
+                self.updating_until = None;
             }
         }
     }

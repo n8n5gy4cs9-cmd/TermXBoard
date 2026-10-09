@@ -86,6 +86,25 @@ fn collection_refreshes_every_three_seconds() {
 }
 
 #[test]
+fn monitor_keeps_bounded_cpu_and_memory_history_for_sparklines() {
+    let now = Instant::now();
+    let source = ScriptedSource {
+        results: (0..40).map(|value| Ok(snapshot(value as f32))).collect(),
+        delay: Duration::ZERO,
+    };
+    let mut monitor = TelemetryMonitor::new(source, Duration::from_secs(1), now);
+
+    for value in 0..40 {
+        wait_for_cpu(&mut monitor, now + Duration::from_secs(value), value as f32);
+    }
+
+    assert_eq!(monitor.cpu_history().len(), 30);
+    assert_eq!(monitor.cpu_history().first(), Some(&10));
+    assert_eq!(monitor.cpu_history().last(), Some(&39));
+    assert_eq!(monitor.memory_history(), &[50; 30]);
+}
+
+#[test]
 fn collection_errors_are_visible() {
     let now = Instant::now();
     let source = ScriptedSource {

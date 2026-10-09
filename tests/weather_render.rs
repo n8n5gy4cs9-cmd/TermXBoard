@@ -3,8 +3,10 @@ use std::time::SystemTime;
 use ratatui::{Terminal, backend::TestBackend, style::Color};
 use termxboard::{
     AppState,
+    preferences::Theme,
     telemetry::TelemetryView,
     ui,
+    visuals::{ColorSupport, SemanticTone, theme_color},
     weather::{WeatherReport, WeatherView},
 };
 
@@ -30,7 +32,22 @@ fn rendered(view: &WeatherView) -> (String, usize, usize) {
     let orange = buffer
         .content()
         .iter()
-        .filter(|cell| cell.symbol() == "●" && cell.fg == Color::Rgb(255, 165, 0))
+        .filter(|cell| {
+            cell.symbol() == "●"
+                && [
+                    theme_color(
+                        Theme::SignatureNeon,
+                        SemanticTone::Warning,
+                        ColorSupport::TrueColor,
+                    ),
+                    theme_color(
+                        Theme::SignatureNeon,
+                        SemanticTone::Warning,
+                        ColorSupport::Ansi,
+                    ),
+                ]
+                .contains(&cell.fg)
+        })
         .count();
     let red = buffer
         .content()
@@ -45,6 +62,7 @@ fn dashboard_renders_loading_weather_with_orange_led() {
     let (output, orange, _) = rendered(&WeatherView::loading());
     assert!(output.contains("WEATHER"));
     assert!(output.contains("Loading"));
+    assert!(output.contains('▰'));
     assert!(orange >= 7);
 }
 
@@ -56,8 +74,8 @@ fn dashboard_renders_current_weather_values() {
         "Light snow",
         "-2°C",
         "Feels -6°C",
-        "Humidity 82%",
-        "Wind 19 km/h",
+        "HUM  82%",
+        "WIND 19km/h",
         "Updated",
     ] {
         assert!(output.contains(expected), "missing {expected:?}");

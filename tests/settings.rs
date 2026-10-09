@@ -1,6 +1,6 @@
 use termxboard::{
     AppAction, AppState, KeyCommand, SettingsField,
-    preferences::{Preferences, Theme},
+    preferences::{Preferences, Theme, VisualMode},
 };
 
 #[test]
@@ -61,6 +61,12 @@ fn settings_select_theme_and_reduced_motion() {
     app.handle_key(KeyCommand::Down);
     assert_eq!(app.settings_field(), SettingsField::ReducedMotion);
     app.handle_key(KeyCommand::Enter);
+    assert!(app.preferences().reduced_motion);
+
+    app.handle_key(KeyCommand::Down);
+    assert_eq!(app.settings_field(), SettingsField::VisualMode);
+    app.handle_key(KeyCommand::Right);
+    assert_eq!(app.preferences().visual_mode, VisualMode::NerdFont);
     assert!(app.preferences().reduced_motion);
 }
 

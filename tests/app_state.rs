@@ -30,16 +30,16 @@ fn task_view_cannot_open_without_a_loaded_project() {
 }
 
 #[test]
-fn question_mark_toggles_help() {
+fn h_toggles_help() {
     let mut app = AppState::default();
 
     assert!(!app.is_help_visible());
     assert_eq!(
-        app.handle_key(KeyCommand::Character('?')),
+        app.handle_key(KeyCommand::Character('h')),
         AppAction::Continue
     );
     assert!(app.is_help_visible());
 
-    app.handle_key(KeyCommand::Character('?'));
+    app.handle_key(KeyCommand::Character('h'));
     assert!(!app.is_help_visible());
 }

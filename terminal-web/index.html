@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TermXBoard Web // Retro Command Deck</title>
+<style>
+/* ============================ THEMES ============================ */
+:root{
+  --bg:#05060a; --panel:#0a0d16; --border:#9a4dff; --border-dim:#33244f;
+  --fg:#c7d0dd; --muted:#56687a;
+  --primary:#00f0ff; --secondary:#9a4dff; --accent:#ff2d95;
+  --danger:#ff416c; --info:#5ad1ff; --review:#c98bff; --warning:#ffcf5a; --success:#37e39b;
+  --glow:0.9; --scan:0.10; --radius:0px; --font-scale:1;
+  --mono:"JetBrains Mono","Fira Code","SF Mono",Menlo,Consolas,"DejaVu Sans Mono",monospace;
+}
+[data-theme="signature-neon"]{ --bg:#05060a;--panel:#0a0d16;--border:#9a4dff;--border-dim:#33244f;--fg:#c7d0dd;--muted:#56687a;--primary:#00f0ff;--secondary:#9a4dff;--accent:#ff2d95;--danger:#ff416c;--info:#5ad1ff;--review:#c98bff;--warning:#ffcf5a;--success:#37e39b; }
+[data-theme="cyberpunk"]{ --bg:#0a0410;--panel:#140820;--border:#ff006e;--border-dim:#4d1436;--fg:#ffe6f5;--muted:#6e6080;--primary:#ffea00;--secondary:#00ffd1;--accent:#ff006e;--danger:#ff2d55;--info:#00ffd1;--review:#c77dff;--warning:#ffea00;--success:#39ff88; }
+[data-theme="matrix"]{ --bg:#000a02;--panel:#02140a;--border:#00b42d;--border-dim:#0d3a1c;--fg:#b6ffc4;--muted:#376441;--primary:#00ff41;--secondary:#00b42d;--accent:#aaffbe;--danger:#ff5f56;--info:#55ff88;--review:#8affb0;--warning:#d7ff5a;--success:#00ff41; }
+[data-theme="nord"]{ --bg:#2e3440;--panel:#3b4252;--border:#88c0d0;--border-dim:#4c566a;--fg:#e5e9f0;--muted:#7a869c;--primary:#88c0d0;--secondary:#81a1c1;--accent:#b48ead;--danger:#bf616a;--info:#8fbcbb;--review:#b48ead;--warning:#ebcb8b;--success:#a3be8c; }
+[data-theme="dracula"]{ --bg:#21222c;--panel:#282a36;--border:#bd93f9;--border-dim:#44475a;--fg:#f8f8f2;--muted:#6272a4;--primary:#8be9fd;--secondary:#bd93f9;--accent:#ff79c6;--danger:#ff5555;--info:#8be9fd;--review:#ff79c6;--warning:#f1fa8c;--success:#50fa7b; }
+[data-theme="solarized"]{ --bg:#00212b;--panel:#002b36;--border:#268bd2;--border-dim:#0a4b5c;--fg:#93a1a1;--muted:#586e75;--primary:#2aa198;--secondary:#268bd2;--accent:#d33682;--danger:#dc322f;--info:#2aa198;--review:#6c71c4;--warning:#b58900;--success:#859900; }
+[data-theme="amber-crt"]{ --bg:#0d0700;--panel:#160d00;--border:#ff8000;--border-dim:#4d2a00;--fg:#ffcf85;--muted:#805714;--primary:#ffb000;--secondary:#ff8000;--accent:#ffd666;--danger:#ff5f00;--info:#ffc247;--review:#ff8c00;--warning:#ffd166;--success:#ffd166; }
+[data-theme="gruvbox"]{ --bg:#1d2021;--panel:#282828;--border:#fabd2f;--border-dim:#504945;--fg:#ebdbb2;--muted:#928374;--primary:#83a598;--secondary:#b8bb26;--accent:#fb4934;--danger:#fb4934;--info:#8ec07c;--review:#d3869b;--warning:#fabd2f;--success:#b8bb26; }
+[data-theme="tokyo-night"]{ --bg:#16161e;--panel:#1a1b26;--border:#7aa2f7;--border-dim:#2f3350;--fg:#c0caf5;--muted:#565f89;--primary:#7aa2f7;--secondary:#bb9af7;--accent:#f7768e;--danger:#f7768e;--info:#7dcfff;--review:#bb9af7;--warning:#e0af68;--success:#9ece6a; }
+[data-theme="catppuccin"]{ --bg:#181825;--panel:#1e1e2e;--border:#cba6f7;--border-dim:#45475a;--fg:#cdd6f4;--muted:#6c7086;--primary:#89b4fa;--secondary:#cba6f7;--accent:#f5c2e7;--danger:#f38ba8;--info:#89dceb;--review:#cba6f7;--warning:#f9e2af;--success:#a6e3a1; }
+[data-theme="monokai"]{ --bg:#1e1f1c;--panel:#272822;--border:#a6e22e;--border-dim:#49483e;--fg:#f8f8f2;--muted:#75715e;--primary:#66d9ef;--secondary:#a6e22e;--accent:#f92672;--danger:#f92672;--info:#66d9ef;--review:#ae81ff;--warning:#e6db74;--success:#a6e22e; }
+[data-theme="synthwave"]{ --bg:#1a1030;--panel:#241b3a;--border:#ff7edb;--border-dim:#443860;--fg:#f0eff1;--muted:#7a6a99;--primary:#36f9f6;--secondary:#ff7edb;--accent:#fede5d;--danger:#fe4450;--info:#36f9f6;--review:#ff7edb;--warning:#fede5d;--success:#72f1b8; }
+[data-theme="one-dark"]{ --bg:#21252b;--panel:#282c34;--border:#61afef;--border-dim:#3b4048;--fg:#abb2bf;--muted:#5c6370;--primary:#61afef;--secondary:#c678dd;--accent:#e06c75;--danger:#e06c75;--info:#56b6c2;--review:#c678dd;--warning:#e5c07b;--success:#98c379; }
+[data-theme="ayu-mirage"]{ --bg:#1f2430;--panel:#242936;--border:#ffcc66;--border-dim:#3d4353;--fg:#cbccc6;--muted:#707a8c;--primary:#5ccfe6;--secondary:#ffcc66;--accent:#ff8f40;--danger:#ff3333;--info:#5ccfe6;--review:#d4bfff;--warning:#ffcc66;--success:#bae67e; }
+
+*{ box-sizing:border-box; }
+html,body{ margin:0; height:100%; }
+body{ background:var(--bg); color:var(--fg); font-family:var(--mono); font-size:calc(14px*var(--font-scale)); line-height:1.45; overflow:hidden;
+  text-shadow:0 0 calc(6px*var(--glow)) color-mix(in srgb, currentColor 45%, transparent); }
+[data-glow="off"] body{ text-shadow:none; }
+.crt::before{ content:""; position:fixed; inset:0; pointer-events:none; z-index:9999;
+  background:repeating-linear-gradient(to bottom, rgba(0,0,0,var(--scan)) 0 1px, transparent 1px 3px); mix-blend-mode:overlay; }
+.crt::after{ content:""; position:fixed; inset:0; pointer-events:none; z-index:9998;
+  background:radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.35) 100%); }
+[data-scanlines="off"] .crt::before{ display:none; }
+[data-vignette="off"] .crt::after{ display:none; }
+
+button,select,input{ font-family:inherit; font-size:inherit; color:inherit; }
+a{ color:var(--primary); text-decoration:none; }
+a:hover{ text-decoration:underline; }
+
+/* ============================ LAYOUT ============================ */
+#app{ display:flex; flex-direction:column; height:100vh; padding:10px; gap:8px; }
+.frame{ border:1px solid var(--border); border-radius:var(--radius); background:var(--panel);
+  box-shadow:0 0 calc(14px*var(--glow)) color-mix(in srgb,var(--border) 30%, transparent) inset, 0 0 calc(10px*var(--glow)) color-mix(in srgb,var(--border) 18%, transparent); }
+
+#topbar{ display:flex; align-items:center; gap:14px; padding:8px 14px; flex-wrap:wrap; }
+#topbar .logo{ color:var(--accent); font-weight:700; letter-spacing:2px; }
+#topbar .logo .x{ color:var(--primary); }
+#topbar .sub{ color:var(--muted); letter-spacing:1px; }
+#topbar .spacer{ flex:1; }
+.chip{ color:var(--muted); } .chip b{ color:var(--fg); font-weight:400; } .chip .live{ color:var(--success); }
+.tabbtn{ background:transparent; border:1px solid var(--border-dim); color:var(--muted); padding:3px 12px; cursor:pointer; border-radius:var(--radius); letter-spacing:1px; }
+.tabbtn.active{ border-color:var(--primary); color:var(--primary); }
+
+#controls{ display:flex; align-items:center; gap:10px; padding:6px 12px; flex-wrap:wrap; }
+#controls .grp{ display:flex; align-items:center; gap:6px; }
+#controls label{ color:var(--muted); text-transform:uppercase; font-size:calc(11px*var(--font-scale)); letter-spacing:1px; }
+.btn{ background:transparent; border:1px solid var(--border-dim); color:var(--fg); padding:4px 10px; cursor:pointer; border-radius:var(--radius); letter-spacing:1px; }
+.btn:hover{ border-color:var(--primary); color:var(--primary); }
+select.sel,input.sel{ background:var(--bg); border:1px solid var(--border-dim); padding:3px 8px; border-radius:var(--radius); cursor:pointer; }
+select.sel:hover{ border-color:var(--primary); }
+
+/* board */
+#board-wrap{ flex:1; overflow:hidden; display:flex; }
+#board{ flex:1; display:flex; gap:8px; overflow-x:auto; overflow-y:hidden; padding-bottom:2px; }
+.col{ min-width:220px; flex:1 1 0; display:flex; flex-direction:column; overflow:hidden; }
+.col > .frame{ display:flex; flex-direction:column; height:100%; overflow:hidden; }
+.col-head{ padding:6px 10px; border-bottom:1px solid var(--border-dim); letter-spacing:1px; display:flex; align-items:center; gap:6px; }
+.col-head .count{ color:var(--muted); margin-left:auto; }
+.col-body{ overflow-y:auto; padding:8px; display:flex; flex-direction:column; gap:6px; flex:1; }
+.grp-head{ color:var(--muted); letter-spacing:2px; text-transform:uppercase; font-size:calc(11px*var(--font-scale)); padding:2px 4px; }
+
+.card{ border:1px solid var(--border-dim); border-radius:var(--radius); padding:7px 9px; cursor:pointer; border-left-width:3px;
+  background:color-mix(in srgb,var(--panel) 70%, var(--bg)); transition:border-color .12s; }
+.card:hover{ border-color:var(--primary); }
+.card.sel{ border-color:var(--accent); box-shadow:0 0 calc(12px*var(--glow)) color-mix(in srgb,var(--accent) 45%,transparent); }
+.card.current{ border-color:var(--primary); }
+.card.child{ margin-left:14px; opacity:.95; }
+.card .id{ color:var(--accent); font-weight:700; }
+.card.current .id::after{ content:" ◈"; color:var(--primary); }
+.card .title{ color:var(--fg); margin-top:2px; }
+.card .meta{ color:var(--muted); font-size:calc(11px*var(--font-scale)); margin-top:4px; display:flex; gap:8px; flex-wrap:wrap; }
+.card .meta .dep.blocked{ color:var(--danger); }
+.card .meta .pri.high,.card .meta .pri.critical{ color:var(--danger); }
+.card .meta .pri.medium{ color:var(--warning); }
+
+/* detail */
+#detail{ padding:8px 14px; max-height:30vh; overflow-y:auto; }
+#detail h3{ margin:0 0 6px; color:var(--secondary); letter-spacing:1px; font-weight:600; font-size:calc(13px*var(--font-scale)); }
+#detail .row{ display:flex; gap:8px; margin:2px 0; }
+#detail .row .k{ color:var(--muted); min-width:110px; text-transform:uppercase; font-size:calc(11px*var(--font-scale)); letter-spacing:1px; }
+#detail .row .v{ color:var(--fg); flex:1; }
+#detail .files span{ color:var(--info); }
+#detail .empty{ color:var(--muted); }
+#detail .barwrap{ display:flex; align-items:center; gap:10px; margin:6px 0; }
+.pbar{ flex:1; height:14px; border:1px solid var(--border-dim); border-radius:var(--radius); overflow:hidden; background:var(--bg); display:flex; }
+.pbar i{ display:block; height:100%; }
+.pbar i.done{ background:var(--success); } .pbar i.wip{ background:var(--primary); } .pbar i.rev{ background:var(--review); } .pbar i.block{ background:var(--danger); }
+
+/* ============================ DASHBOARD ============================ */
+#dashboard{ flex:1; display:none; grid-template-columns:1.4fr 1fr; grid-template-rows:auto 1fr; gap:8px; overflow:hidden; }
+#dash-clock{ grid-column:1; grid-row:1; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:18px; }
+#dash-clock .time{ font-size:calc(64px*var(--font-scale)); letter-spacing:6px; color:var(--primary); line-height:1; }
+#dash-clock .date{ margin-top:8px; color:var(--fg); letter-spacing:3px; }
+#dash-clock .day{ margin-top:4px; color:var(--muted); letter-spacing:2px; }
+#dash-clock .ready{ margin-top:14px; color:var(--accent); letter-spacing:4px; }
+#dash-weather{ grid-column:2; grid-row:1; padding:14px 18px; }
+#dash-weather .wtitle{ color:var(--secondary); letter-spacing:1px; display:flex; align-items:center; gap:8px; }
+#dash-weather .wtitle .refresh{ margin-left:auto; }
+#dash-weather .loc{ color:var(--fg); margin-top:8px; letter-spacing:1px; }
+#dash-weather .big{ font-size:calc(30px*var(--font-scale)); color:var(--primary); margin:6px 0; }
+#dash-weather .sky{ color:var(--fg); }
+#dash-weather .grid{ display:grid; grid-template-columns:1fr 1fr; gap:2px 14px; margin-top:10px; color:var(--muted); }
+#dash-weather .grid b{ color:var(--fg); font-weight:400; }
+#dash-news{ grid-column:1 / span 2; grid-row:2; display:flex; gap:8px; overflow:hidden; }
+.news-col{ flex:1 1 0; min-width:0; display:flex; flex-direction:column; overflow:hidden; }
+.news-col > .frame{ display:flex; flex-direction:column; height:100%; overflow:hidden; }
+.news-head{ padding:6px 10px; border-bottom:1px solid var(--border-dim); color:var(--secondary); letter-spacing:1px; display:flex; align-items:center; gap:8px; }
+.news-head .status{ margin-left:auto; font-size:.85em; }
+.news-head .status.ok{ color:var(--success); } .news-head .status.err{ color:var(--danger); } .news-head .status.load{ color:var(--warning); }
+.news-body{ overflow-y:auto; padding:8px 10px; flex:1; display:flex; flex-direction:column; gap:7px; }
+.news-item{ line-height:1.35; }
+.news-item .t{ color:var(--fg); } .news-item a.t:hover{ color:var(--primary); }
+.news-item .m{ color:var(--muted); font-size:calc(11px*var(--font-scale)); }
+
+/* status bar */
+#statusbar{ display:flex; align-items:center; gap:14px; padding:6px 14px; flex-wrap:wrap; }
+#statusbar .k{ color:var(--muted); }
+kbd{ background:var(--bg); border:1px solid var(--border-dim); padding:0 5px; border-radius:3px; color:var(--accent); }
+#statusbar .msg{ margin-left:auto; color:var(--muted); }
+#statusbar .msg.err{ color:var(--danger); } #statusbar .msg.ok{ color:var(--success); }
+
+/* overlays */
+#dropzone{ position:fixed; inset:0; z-index:5000; display:none; align-items:center; justify-content:center; background:color-mix(in srgb,var(--bg) 82%, transparent); backdrop-filter:blur(2px); }
+#dropzone.show{ display:flex; }
+#dropzone .box{ border:2px dashed var(--primary); padding:40px 60px; text-align:center; border-radius:var(--radius); }
+#dropzone .box .big{ font-size:1.6em; color:var(--primary); letter-spacing:3px; }
+#empty{ flex:1; display:flex; align-items:center; justify-content:center; }
+#empty .box{ text-align:center; }
+#empty .box .big{ color:var(--accent); font-size:1.5em; letter-spacing:3px; margin-bottom:10px; }
+#empty .box .hint{ color:var(--muted); margin-top:14px; line-height:1.9; }
+
+/* settings drawer */
+#settings{ position:fixed; top:0; right:0; height:100vh; width:min(380px,92vw); z-index:6000; transform:translateX(105%); transition:transform .18s ease; padding:16px; overflow-y:auto; }
+#settings.show{ transform:translateX(0); }
+#settings h2{ margin:0 0 14px; color:var(--accent); letter-spacing:2px; }
+#settings .grp2{ margin:12px 0; }
+#settings .grp2 > .lab{ color:var(--secondary); text-transform:uppercase; letter-spacing:1px; font-size:calc(11px*var(--font-scale)); border-bottom:1px solid var(--border-dim); padding-bottom:4px; margin-bottom:8px; }
+#settings .opt{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:4px 0; }
+#settings .opt span{ color:var(--muted); }
+.swatch-row{ display:flex; flex-direction:column; gap:6px; }
+.swatch{ width:100%; text-align:left; display:flex; align-items:center; gap:8px; padding:6px 8px; border:1px solid var(--border-dim); cursor:pointer; border-radius:var(--radius); background:transparent; color:var(--fg); }
+.swatch:hover{ border-color:var(--primary); } .swatch.active{ border-color:var(--accent); }
+.swatch .dots{ display:flex; gap:3px; } .swatch .dots i{ width:12px; height:12px; border-radius:50%; display:inline-block; }
+.toggle{ background:var(--bg); border:1px solid var(--border-dim); color:var(--fg); cursor:pointer; padding:2px 12px; border-radius:var(--radius); min-width:56px; }
+.toggle[data-on="true"]{ border-color:var(--success); color:var(--success); }
+.range{ width:130px; }
+#settings .close{ position:absolute; top:14px; right:16px; }
+#feedlist{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+#feedlist .feed{ display:flex; gap:6px; align-items:center; }
+#feedlist .feed input{ flex:1; }
+#feedlist .feed button{ background:transparent; border:1px solid var(--border-dim); color:var(--danger); cursor:pointer; padding:0 8px; }
+
+*::-webkit-scrollbar{ width:8px; height:8px; }
+*::-webkit-scrollbar-thumb{ background:var(--border-dim); border-radius:6px; }
+*::-webkit-scrollbar-track{ background:transparent; }
+</style>
+</head>
+<body class="crt">
+<div id="app">
+
+  <div id="topbar" class="frame">
+    <span class="logo">◆ TERM<span class="x">X</span>BOARD</span>
+    <span class="sub">// WEB COMMAND DECK</span>
+    <button class="tabbtn active" id="tab-dash" data-view="dashboard">DASHBOARD</button>
+    <button class="tabbtn" id="tab-board" data-view="board">TASKS</button>
+    <span class="spacer"></span>
+    <span class="chip" id="chip-project">PROJECT <b>—</b></span>
+    <span class="chip" id="chip-current">CURRENT <b>—</b></span>
+    <span class="chip" id="chip-updated">UPDATED <b>—</b></span>
+    <span class="chip" id="chip-live"><span class="live" id="live-dot">●</span> <span id="live-label">NO FILE</span></span>
+  </div>
+
+  <div id="controls" class="frame">
+    <div class="grp">
+      <button class="btn" id="btn-load">[l] LOAD JSON</button>
+      <button class="btn" id="btn-reload">[r] RELOAD</button>
+    </div>
+    <div class="grp" id="tag-grp" style="display:none">
+      <label>Tag</label>
+      <select class="sel" id="sel-tag"></select>
+    </div>
+    <div class="grp">
+      <label>Group</label>
+      <select class="sel" id="sel-group">
+        <option value="status">Status</option>
+        <option value="milestone">Milestone</option>
+        <option value="phase">Phase</option>
+        <option value="priority">Priority</option>
+        <option value="mode">Mode</option>
+      </select>
+    </div>
+    <div class="grp">
+      <label>Filter</label>
+      <select class="sel" id="sel-filter"></select>
+    </div>
+    <div class="grp">
+      <label>Search</label>
+      <input class="sel" id="inp-search" placeholder="id / title / file…" style="width:150px">
+    </div>
+    <span style="flex:1"></span>
+    <button class="btn" id="btn-settings">[s] SETTINGS</button>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboard">
+    <div id="dash-clock" class="frame">
+      <div class="time" id="clock-time">--:--:--</div>
+      <div class="date" id="clock-date">—</div>
+      <div class="day" id="clock-day">—</div>
+      <div class="ready" id="clock-ready">COMMAND DECK ONLINE</div>
+    </div>
+    <div id="dash-weather" class="frame">
+      <div class="wtitle">☀ WEATHER <button class="btn refresh" id="btn-weather" style="padding:1px 8px">↻</button></div>
+      <div class="loc" id="w-loc">—</div>
+      <div class="big" id="w-temp">—</div>
+      <div class="sky" id="w-sky">Load location in settings</div>
+      <div class="grid" id="w-grid"></div>
+    </div>
+    <div id="dash-news"></div>
+  </div>
+
+  <!-- BOARD VIEW -->
+  <div id="board-wrap" class="frame" style="border:none;background:none;box-shadow:none; display:none">
+    <div id="empty">
+      <div class="box">
+        <div class="big">◈ NO TASK FILE LOADED</div>
+        <div class="sub" style="color:var(--muted)">Pure HTML + JS · no server · no install · read-only</div>
+        <div class="hint">
+          <button class="btn" id="empty-load">▶ CHOOSE progress.json / tasks.json</button><br>
+          …or <b>drag &amp; drop</b> the file anywhere<br>
+          <span style="opacity:.7">Reads TermXBoard <b>progress.json</b> and Task-Master <b>tasks.json (PRD)</b></span><br>
+          <span style="opacity:.7">Chrome/Edge: keeps a live handle so <kbd>r</kbd> re-reads the same file</span>
+        </div>
+      </div>
+    </div>
+    <div id="board" style="display:none"></div>
+  </div>
+  <div id="detail" class="frame" style="display:none"></div>
+
+  <div id="statusbar" class="frame">
+    <span class="k"><kbd>d</kbd>/<kbd>t</kbd> view</span>
+    <span class="k"><kbd>←→↑↓</kbd> navigate</span>
+    <span class="k"><kbd>l</kbd> load</span>
+    <span class="k"><kbd>r</kbd> reload</span>
+    <span class="k"><kbd>g</kbd> group</span>
+    <span class="k"><kbd>f</kbd> filter</span>
+    <span class="k"><kbd>/</kbd> search</span>
+    <span class="k"><kbd>[</kbd>/<kbd>]</kbd> theme</span>
+    <span class="k"><kbd>s</kbd> settings</span>
+    <span class="msg" id="statusmsg">Ready.</span>
+  </div>
+</div>
+
+<div id="dropzone"><div class="box"><div class="big">⬇ DROP JSON</div><div style="color:var(--muted)">progress.json or tasks.json</div></div></div>
+
+<!-- settings drawer -->
+<div id="settings" class="frame">
+  <button class="btn close" id="btn-close-settings">✕</button>
+  <h2>⚙ SETTINGS</h2>
+
+  <div class="grp2">
+    <div class="lab">Theme</div>
+    <div class="swatch-row" id="theme-list"></div>
+  </div>
+
+  <div class="grp2">
+    <div class="lab">CRT Effects</div>
+    <div class="opt"><span>Text glow</span><button class="toggle" data-set="glow">—</button></div>
+    <div class="opt"><span>Scanlines</span><button class="toggle" data-set="scanlines">—</button></div>
+    <div class="opt"><span>Vignette</span><button class="toggle" data-set="vignette">—</button></div>
+    <div class="opt"><span>Glow strength</span><input type="range" class="range" id="rng-glow" min="0" max="2" step="0.1"></div>
+    <div class="opt"><span>Scanline depth</span><input type="range" class="range" id="rng-scan" min="0" max="0.4" step="0.02"></div>
+  </div>
+
+  <div class="grp2">
+    <div class="lab">Layout</div>
+    <div class="opt"><span>Font size</span><input type="range" class="range" id="rng-font" min="0.8" max="1.4" step="0.05"></div>
+    <div class="opt"><span>Rounded corners</span><input type="range" class="range" id="rng-radius" min="0" max="14" step="1"></div>
+    <div class="opt"><span>Auto-reload file (s)</span>
+      <select class="sel" id="sel-autoreload"><option value="0">off</option><option value="5">5</option><option value="15">15</option><option value="30">30</option><option value="60">60</option></select>
+    </div>
+  </div>
+
+  <div class="grp2">
+    <div class="lab">Weather</div>
+    <div class="opt"><span>City</span><input class="sel" id="inp-city" placeholder="e.g. Turku" style="width:150px"></div>
+    <div class="opt"><span>Units</span><select class="sel" id="sel-units"><option value="c">°C · km/h</option><option value="f">°F · mph</option></select></div>
+    <div class="opt"><button class="btn" id="btn-setloc">Set from city</button><button class="btn" id="btn-geoloc">Use my location</button></div>
+    <div style="color:var(--muted);font-size:.85em">Uses open-meteo.com (no key, no tracking).</div>
+  </div>
+
+  <div class="grp2">
+    <div class="lab">News feeds</div>
+    <div id="feedlist"></div>
+    <div class="opt" style="margin-top:6px"><button class="btn" id="btn-addfeed">+ Add RSS feed</button></div>
+    <div class="opt"><span>RSS proxy (CORS)</span></div>
+    <input class="sel" id="inp-proxy" style="width:100%" placeholder="https://api.allorigins.win/raw?url=">
+    <div style="color:var(--muted);font-size:.85em">Hacker News needs no proxy (official API). Other RSS feeds are CORS-blocked in browsers, so they route through this proxy URL. Clear it to disable RSS.</div>
+  </div>
+
+  <div class="grp2" style="color:var(--muted);font-size:.85em">
+    All settings persist in this browser via localStorage. The app is <b>read-only</b>: it never writes to your JSON files.
+  </div>
+</div>
+
+<input type="file" id="file-input" accept=".json,application/json" style="display:none">
+
+<script>
+"use strict";
+/* ============================ CATALOG ============================ */
+const THEMES=[
+  {id:"signature-neon",name:"Signature Neon",dots:["#00f0ff","#9a4dff","#ff2d95"]},
+  {id:"cyberpunk",name:"Cyberpunk",dots:["#ffea00","#00ffd1","#ff006e"]},
+  {id:"matrix",name:"Matrix",dots:["#00ff41","#00b42d","#aaffbe"]},
+  {id:"nord",name:"Nord",dots:["#88c0d0","#81a1c1","#b48ead"]},
+  {id:"dracula",name:"Dracula",dots:["#8be9fd","#bd93f9","#ff79c6"]},
+  {id:"solarized",name:"Solarized Dark",dots:["#2aa198","#268bd2","#d33682"]},
+  {id:"amber-crt",name:"Amber CRT",dots:["#ffb000","#ff8000","#ffd666"]},
+  {id:"gruvbox",name:"Gruvbox",dots:["#83a598","#b8bb26","#fb4934"]},
+  {id:"tokyo-night",name:"Tokyo Night",dots:["#7aa2f7","#bb9af7","#f7768e"]},
+  {id:"catppuccin",name:"Catppuccin Mocha",dots:["#89b4fa","#cba6f7","#f5c2e7"]},
+  {id:"monokai",name:"Monokai",dots:["#66d9ef","#a6e22e","#f92672"]},
+  {id:"synthwave",name:"Synthwave '84",dots:["#36f9f6","#ff7edb","#fede5d"]},
+  {id:"one-dark",name:"One Dark",dots:["#61afef","#c678dd","#e06c75"]},
+  {id:"ayu-mirage",name:"Ayu Mirage",dots:["#5ccfe6","#ffcc66","#ff8f40"]},
+];
+// status schemes: internal columns per source format
+const SCHEMES={
+  termx:[
+    {id:"blocked",label:"Blocked",dot:"◆",color:"var(--danger)"},
+    {id:"in-progress",label:"WIP",dot:"▶",color:"var(--primary)"},
+    {id:"awaiting-review",label:"User Review",dot:"◉",color:"var(--review)"},
+    {id:"todo",label:"Undone",dot:"○",color:"var(--muted)"},
+    {id:"done",label:"Done",dot:"✓",color:"var(--success)"},
+  ],
+  taskmaster:[
+    {id:"pending",label:"Pending",dot:"○",color:"var(--muted)"},
+    {id:"in-progress",label:"In Progress",dot:"▶",color:"var(--primary)"},
+    {id:"review",label:"Review",dot:"◉",color:"var(--review)"},
+    {id:"done",label:"Done",dot:"✓",color:"var(--success)"},
+    {id:"deferred",label:"Deferred",dot:"⏸",color:"var(--warning)"},
+    {id:"cancelled",label:"Cancelled",dot:"✕",color:"var(--danger)"},
+  ],
+};
+const TM_STATUSES=new Set(["pending","in-progress","done","review","deferred","cancelled"]);
+const TERMX_STATUSES=new Set(["blocked","in-progress","awaiting-review","todo","done"]);
+
+const DEFAULTS={ theme:"signature-neon", glow:true, scanlines:true, vignette:true, glowStrength:0.9, scanDepth:0.10,
+  font:1, radius:0, group:"status", filter:"all", autoreload:0, view:"dashboard",
+  city:"", lat:null, lon:null, units:"c",
+  proxy:"https://api.allorigins.win/raw?url=",
+  feeds:[
+    {name:"Hacker News",url:"hn"},
+    {name:"Simon Willison",url:"https://simonwillison.net/atom/everything/"},
+    {name:"GitHub Blog",url:"https://github.blog/feed/"},
+  ] };
+const LS_KEY="termxboard-web.v2";
+let cfg=loadCfg();
+
+let raw=null;          // parsed json
+let data=null;         // normalized {scheme, tasks, ...}
+let tags=null;         // {tagName:[tasks]} for task-master tagged file
+let activeTag=null;
+let fileHandle=null, fileName=null;
+let columns=[], flatCards=[], selCol=0, selIdx=0;
+let autoTimer=null, clockTimer=null;
+
+/* ============================ PERSISTENCE ============================ */
+function loadCfg(){ try{ const c=Object.assign({},DEFAULTS,JSON.parse(localStorage.getItem(LS_KEY)||"{}")); if(!Array.isArray(c.feeds)) c.feeds=DEFAULTS.feeds; return c; }catch(e){ return JSON.parse(JSON.stringify(DEFAULTS)); } }
+function saveCfg(){ localStorage.setItem(LS_KEY,JSON.stringify(cfg)); }
+
+/* ============================ THEME ============================ */
+function applyTheme(){
+  const r=document.documentElement;
+  r.setAttribute("data-theme",cfg.theme);
+  r.setAttribute("data-glow",cfg.glow?"on":"off");
+  r.setAttribute("data-scanlines",cfg.scanlines?"on":"off");
+  r.setAttribute("data-vignette",cfg.vignette?"on":"off");
+  r.style.setProperty("--glow",cfg.glow?cfg.glowStrength:0);
+  r.style.setProperty("--scan",cfg.scanlines?cfg.scanDepth:0);
+  r.style.setProperty("--font-scale",cfg.font);
+  r.style.setProperty("--radius",cfg.radius+"px");
+}
+function cycleTheme(dir){ const i=THEMES.findIndex(t=>t.id===cfg.theme); cfg.theme=THEMES[(i+dir+THEMES.length)%THEMES.length].id; applyTheme(); saveCfg(); syncSettingsUI(); toast("Theme: "+THEMES.find(t=>t.id===cfg.theme).name,"ok"); }
+
+/* ============================ FILE LOAD (READ-ONLY) ============================ */
+async function pickFile(){
+  if(window.showOpenFilePicker){
+    try{
+      const [h]=await window.showOpenFilePicker({types:[{description:"Task JSON",accept:{"application/json":[".json"]}}]}); // read-only by default
+      fileHandle=h; fileName=h.name; const f=await h.getFile(); await ingest(await f.text()); liveLabel("LIVE"); startAuto();
+    }catch(e){ if(e.name!=="AbortError") toast("Load failed","err"); }
+  } else document.getElementById("file-input").click();
+}
+function onFileInput(e){ const f=e.target.files[0]; if(!f) return; fileHandle=null; fileName=f.name;
+  const rd=new FileReader(); rd.onload=()=>{ ingest(rd.result); liveLabel("STATIC"); }; rd.readAsText(f); e.target.value=""; }
+async function reload(){
+  if(fileHandle){ try{ const f=await fileHandle.getFile(); await ingest(await f.text(),true); toast("Reloaded "+fileName,"ok"); }catch(e){ toast("Reload failed: "+e.message,"err"); } }
+  else if(fileName) toast("Static file — press [l] to re-pick for a fresh read","err");
+  else pickFile();
+}
+async function ingest(text,quiet){
+  let json; try{ json=JSON.parse(text); }catch(e){ toast("Invalid JSON: "+e.message,"err"); return; }
+  const det=detect(json); if(det.error){ toast("Unrecognized file: "+det.error,"err"); return; }
+  raw=json;
+  if(det.format==="tagged"){ tags=det.tags; activeTag=(cfg.savedTag&&det.tags[cfg.savedTag])?cfg.savedTag:(det.tags.master?"master":Object.keys(det.tags)[0]); }
+  else { tags=null; activeTag=null; }
+  data=det.format==="tagged"? normalizeTaskmaster(tags[activeTag],raw) : det.format==="taskmaster"? normalizeTaskmaster(json.tasks,json) : normalizeTermx(json);
+  data.format=det.format;
+  populateTagSelect(); populateFilterSelect();
+  goView("board"); build();
+  if(!quiet) toast("Loaded "+countTasks()+" tasks ("+fmtFmt(det.format)+") from "+fileName,"ok");
+}
+function fmtFmt(f){ return f==="termx"?"progress.json":"tasks.json / PRD"; }
+function countTasks(){ return data? data.tasks.filter(t=>!t.parent).length:0; }
+
+/* ---- detection ---- */
+function detect(j){
+  if(typeof j!=="object"||j===null) return {error:"root not an object"};
+  if(Array.isArray(j.tasks)){
+    // could be termx or legacy taskmaster
+    const statuses=j.tasks.map(t=>t&&t.status).filter(Boolean);
+    const anyTM=statuses.some(s=>!TERMX_STATUSES.has(s)) || j.tasks.some(t=>typeof t.id==="number") || j.tasks.some(t=>Array.isArray(t.subtasks)&&t.subtasks.length);
+    const allTermx=statuses.length && statuses.every(s=>TERMX_STATUSES.has(s)) && !j.tasks.some(t=>typeof t.id==="number");
+    if(allTermx && !anyTM) return validateTermx(j)||{format:"termx"};
+    return validateTM(j.tasks)||{format:"taskmaster"};
+  }
+  // tagged task-master: object whose values have .tasks arrays
+  const tagObj={}; let found=false;
+  for(const k of Object.keys(j)){ const v=j[k]; if(v&&typeof v==="object"&&Array.isArray(v.tasks)){ tagObj[k]=v.tasks; found=true; } }
+  if(found){ for(const k in tagObj){ const e=validateTM(tagObj[k]); if(e) return {error:"tag '"+k+"': "+e.error}; } return {format:"tagged",tags:tagObj}; }
+  return {error:"no `tasks` array or tagged {master:{tasks:[]}} found"};
+}
+function validateTermx(j){ const seen=new Set(); for(const t of j.tasks){ if(!t||typeof t.id!=="string"||!t.id) return {error:"task with empty/invalid id"}; if(seen.has(t.id)) return {error:"duplicate id "+t.id}; seen.add(t.id); if(!TERMX_STATUSES.has(t.status)) return {error:"task "+t.id+" bad status '"+t.status+"'"}; } return null; }
+function validateTM(arr){ if(!Array.isArray(arr)) return {error:"tasks not an array"}; const seen=new Set(); for(const t of arr){ if(!t||t.id===undefined||t.id===null||t.id==="") return {error:"task with missing id"}; const id=String(t.id); if(seen.has(id)) return {error:"duplicate id "+id}; seen.add(id); if(t.status&&!TM_STATUSES.has(t.status)) return {error:"task "+id+" bad status '"+t.status+"' (use "+[...TM_STATUSES].join("/")+")"}; } return null; }
+
+/* ---- normalize ---- */
+function normalizeTermx(j){
+  const tasks=j.tasks.map(t=>({ id:t.id, status:t.status, title:t.title||null, milestone:t.milestone||null, phase:t.phase||null,
+    mode:t.mode||null, priority:null, dependsOn:arr(t.dependsOn).map(String), scopeNote:t.scopeNote||null, description:null,
+    filesChanged:arr(t.filesChanged).map(String), notes:t.notes||null, testStrategy:null, verifiedAt:t.verifiedAt||null,
+    verification:t.verification||null, parent:null }));
+  return { scheme:"termx", project:j.project||null, version:j.version||null, updatedAt:j.updatedAt||null,
+    currentTask:j.currentTask||autoCurrent(tasks), currentPhase:j.currentPhase||null, verifyCommand:j.verifyCommand||null,
+    milestones:arr(j.milestones), tasks };
+}
+function normalizeTaskmaster(taskArr,root){
+  const tasks=[];
+  taskArr.forEach(t=>{
+    const id=String(t.id);
+    tasks.push({ id, status:t.status||"pending", title:t.title||null, milestone:null, phase:null, mode:null,
+      priority:t.priority||null, dependsOn:arr(t.dependencies).map(String), scopeNote:t.details||null, description:t.description||null,
+      filesChanged:arr(t.affectedAssets).map(String), notes:t.description||null, testStrategy:t.testStrategy||null,
+      verifiedAt:null, verification:null, parent:null });
+    arr(t.subtasks).forEach(st=>{
+      const sid=id+"."+String(st.id);
+      tasks.push({ id:sid, status:st.status||"pending", title:st.title||null, milestone:null, phase:null, mode:null,
+        priority:st.priority||t.priority||null, dependsOn:arr(st.dependencies).map(d=>String(d).includes(".")?String(d):id+"."+d), scopeNote:st.details||null,
+        description:st.description||null, filesChanged:[], notes:st.description||null, testStrategy:st.testStrategy||null,
+        verifiedAt:null, verification:null, parent:id });
+    });
+  });
+  const meta=(root&&root.master&&root.master.metadata)|| (tags&&tags[activeTag]&&root[activeTag]&&root[activeTag].metadata) ||null;
+  return { scheme:"taskmaster", project:(meta&&meta.description)||activeTag||"PRD Tasks", version:null,
+    updatedAt:(meta&&(meta.updated||meta.updatedAt))||null, currentTask:autoCurrent(tasks), currentPhase:null,
+    verifyCommand:null, milestones:[], tasks };
+}
+function autoCurrent(tasks){ const t=tasks.find(x=>x.status==="in-progress"&&!x.parent)||tasks.find(x=>x.status==="in-progress"); return t?t.id:null; }
+function arr(x){ return Array.isArray(x)?x:[]; }
+
+/* ============================ SELECTS ============================ */
+function populateTagSelect(){
+  const grp=document.getElementById("tag-grp"), sel=document.getElementById("sel-tag");
+  if(tags && Object.keys(tags).length>1){ grp.style.display="flex"; sel.innerHTML=Object.keys(tags).map(k=>`<option value="${esc(k)}"${k===activeTag?" selected":""}>${esc(k)}</option>`).join(""); }
+  else grp.style.display="none";
+}
+function populateFilterSelect(){
+  const sel=document.getElementById("sel-filter");
+  const sch=SCHEMES[data.scheme];
+  let opts=`<option value="all">All statuses</option>`+sch.map(s=>`<option value="${s.id}">${s.label}</option>`).join("")+`<option value="active">Active (not done)</option>`;
+  sel.innerHTML=opts;
+  if(![...sel.options].some(o=>o.value===cfg.filter)) cfg.filter="all";
+  sel.value=cfg.filter;
+}
+
+/* ============================ BUILD / RENDER ============================ */
+function passesFilter(t){ const f=cfg.filter; if(f==="all") return true; if(f==="active") return t.status!=="done"&&t.status!=="cancelled"; return t.status===f; }
+function passesSearch(t){ const q=(document.getElementById("inp-search").value||"").trim().toLowerCase(); if(!q) return true;
+  return (t.id+" "+(t.title||"")+" "+(t.description||"")+" "+t.filesChanged.join(" ")+" "+(t.priority||"")+" "+(t.milestone||"")).toLowerCase().includes(q); }
+function build(){
+  if(!data) return;
+  document.getElementById("empty").style.display="none";
+  document.getElementById("board").style.display="flex";
+  document.getElementById("detail").style.display="block";
+  setChip("chip-project","PROJECT",data.project? data.project+(data.version?" · "+data.version:"") : "—");
+  setChip("chip-current","CURRENT",data.currentTask||"—");
+  setChip("chip-updated","UPDATED",fmtTime(data.updatedAt));
+
+  const tasks=data.tasks.filter(t=>passesFilter(t)&&passesSearch(t));
+  const sch=SCHEMES[data.scheme];
+  if(cfg.group==="status"){
+    columns=sch.map(s=>({key:s.id,label:s.label,color:s.color,dot:s.dot,tasks:tasks.filter(t=>t.status===s.id)}));
+  } else {
+    const g=cfg.group; const keys=[]; const map=new Map();
+    for(const t of tasks){ const k=t[g]||"—"; if(!map.has(k)){map.set(k,[]);keys.push(k);} map.get(k).push(t); }
+    keys.sort((a,b)=> a==="—"?1:b==="—"?-1:String(a).localeCompare(String(b),undefined,{numeric:true}));
+    columns=keys.map(k=>({key:k,label:String(k),color:"var(--secondary)",dot:"◆",tasks:map.get(k)}));
+    if(!columns.length) columns=[{key:"—",label:"(none)",color:"var(--muted)",dot:"◆",tasks:[]}];
+  }
+  renderBoard(); clampSel(); renderDetail();
+}
+function renderBoard(){
+  const board=document.getElementById("board"); board.innerHTML=""; flatCards=[];
+  const sch=SCHEMES[data.scheme];
+  columns.forEach((col,ci)=>{
+    const el=document.createElement("div"); el.className="col";
+    const inner=document.createElement("div"); inner.className="frame";
+    const head=document.createElement("div"); head.className="col-head"; head.style.color=col.color;
+    head.innerHTML=`<span class="dot">${col.dot}</span><span>${esc(col.label)}</span><span class="count">${col.tasks.length}</span>`;
+    const body=document.createElement("div"); body.className="col-body";
+    col.tasks.forEach(t=>{ const idx=flatCards.length; flatCards.push({colIdx:ci,task:t}); body.appendChild(cardEl(t,ci,idx,sch)); });
+    if(!col.tasks.length){ const e=document.createElement("div"); e.className="grp-head"; e.textContent="— empty —"; body.appendChild(e); }
+    inner.appendChild(head); inner.appendChild(body); el.appendChild(inner); board.appendChild(el);
+  });
+  paintSel();
+}
+function cardEl(t,ci,idx,sch){
+  const c=document.createElement("div");
+  const st=sch.find(s=>s.id===t.status);
+  c.className="card"+(data.currentTask===t.id?" current":"")+(t.parent?" child":"");
+  c.dataset.idx=idx; c.style.borderLeftColor=st?st.color:"var(--muted)";
+  const deps=t.dependsOn.map(d=>{ const dt=data.tasks.find(x=>x.id===d); const blk=dt&&(dt.status==="blocked"); return `<span class="dep${blk?" blocked":""}">⟂${esc(d)}</span>`; }).join(" ");
+  c.innerHTML=`<div><span class="id">${esc(t.id)}</span></div>`+
+    (t.title?`<div class="title">${esc(t.title)}</div>`:"")+
+    `<div class="meta">`+
+      (t.priority?`<span class="pri ${esc((t.priority||"").toLowerCase())}">${esc(t.priority)}</span>`:"")+
+      (t.phase?`<span>P:${esc(t.phase)}</span>`:"")+ (t.milestone?`<span>M:${esc(t.milestone)}</span>`:"")+ (t.mode?`<span>${esc(t.mode)}</span>`:"")+
+      (deps?`<span>${deps}</span>`:"")+`</div>`;
+  c.addEventListener("click",()=>selectFlat(idx));
+  return c;
+}
+function renderDetail(){
+  const d=document.getElementById("detail"); const sch=SCHEMES[data.scheme];
+  const counts={}; sch.forEach(s=>counts[s.id]=0); data.tasks.filter(t=>!t.parent).forEach(t=>{ if(counts[t.status]!==undefined) counts[t.status]++; });
+  const total=data.tasks.filter(t=>!t.parent).length||1;
+  const doneC=counts.done||0, wipC=counts["in-progress"]||0, revC=(counts.review||0)+(counts["awaiting-review"]||0), blkC=(counts.blocked||0);
+  const bar=`<div class="barwrap"><div class="pbar">
+    <i class="done" style="width:${doneC/total*100}%"></i><i class="rev" style="width:${revC/total*100}%"></i>
+    <i class="wip" style="width:${wipC/total*100}%"></i><i class="block" style="width:${blkC/total*100}%"></i>
+  </div><span style="color:var(--muted)">${doneC}/${total} done · ${wipC} in progress</span></div>`;
+  const cur=flatCards[curFlatIndex()];
+  if(!cur){ d.innerHTML=`<h3>PROGRESS</h3>${bar}<div class="empty">No task selected.</div>`; return; }
+  const t=cur.task; const st=sch.find(s=>s.id===t.status)||{label:t.status,color:"var(--fg)",dot:"•"};
+  const rows=[];
+  rows.push(row("Status",`<span style="color:${st.color}">${st.dot} ${st.label}</span>`+(data.currentTask===t.id?` <span style="color:var(--primary)">◈ CURRENT</span>`:"")));
+  if(t.title) rows.push(row("Title",esc(t.title)));
+  if(t.parent) rows.push(row("Parent",esc(t.parent)));
+  if(t.priority) rows.push(row("Priority",esc(t.priority)));
+  if(t.milestone) rows.push(row("Milestone",esc(t.milestone)));
+  if(t.phase) rows.push(row("Phase",esc(t.phase)));
+  if(t.mode) rows.push(row("Mode",esc(t.mode)));
+  if(t.dependsOn.length) rows.push(row("Depends",t.dependsOn.map(dp=>{const dt=data.tasks.find(x=>x.id===dp);const s=dt?sch.find(z=>z.id===dt.status):null;return esc(dp)+(s?` <span style="color:${s.color}">[${s.label}]</span>`:"");}).join(", ")));
+  if(t.description&&t.description!==t.notes) rows.push(row("Description",esc(t.description)));
+  if(t.scopeNote) rows.push(row(data.scheme==="taskmaster"?"Details":"Scope",esc(t.scopeNote)));
+  if(t.filesChanged.length) rows.push(row("Files",`<span class="files">`+t.filesChanged.map(f=>`<span>${esc(f)}</span>`).join(", ")+`</span>`));
+  if(t.notes&&t.notes!==t.description) rows.push(row("Notes",esc(t.notes)));
+  if(t.testStrategy) rows.push(row("Test",esc(t.testStrategy)));
+  if(data.verifyCommand) rows.push(row("Verify",`<code>${esc(data.verifyCommand)}</code>`));
+  if(t.verifiedAt) rows.push(row("Verified",fmtTime(t.verifiedAt)+(t.verification&&t.verification.result?` · ${esc(t.verification.result)}`:"")));
+  d.innerHTML=`<h3>▚ ${esc(t.id)} DETAIL</h3>${bar}${rows.join("")}`;
+}
+function row(k,v){ return `<div class="row"><div class="k">${k}</div><div class="v">${v}</div></div>`; }
+
+/* ============================ SELECTION ============================ */
+function curFlatIndex(){ const inCol=flatCards.filter(c=>c.colIdx===selCol); if(!inCol.length) return -1; return flatCards.indexOf(inCol[Math.min(selIdx,inCol.length-1)]); }
+function clampSel(){ if(!columns.length){selCol=0;selIdx=0;return;} selCol=Math.max(0,Math.min(selCol,columns.length-1));
+  const has=ci=>flatCards.some(c=>c.colIdx===ci);
+  if(!has(selCol)){ for(let dd=1;dd<columns.length;dd++){ if(has(selCol-dd)){selCol-=dd;break;} if(has(selCol+dd)){selCol+=dd;break;} } }
+  const n=flatCards.filter(c=>c.colIdx===selCol).length; selIdx=Math.max(0,Math.min(selIdx,Math.max(0,n-1))); }
+function selectFlat(idx){ const c=flatCards[idx]; if(!c) return; selCol=c.colIdx; selIdx=flatCards.filter(x=>x.colIdx===selCol).indexOf(c); paintSel(); renderDetail(); }
+function move(dCol,dRow){ if(dCol){ selCol+=dCol; clampSel(); } if(dRow){ const n=flatCards.filter(c=>c.colIdx===selCol).length; if(n) selIdx=(selIdx+dRow+n)%n; } paintSel(); renderDetail(); const el=document.querySelector(".card.sel"); if(el) el.scrollIntoView({block:"nearest",inline:"nearest"}); }
+function paintSel(){ document.querySelectorAll(".card.sel").forEach(e=>e.classList.remove("sel")); const fi=curFlatIndex(); if(fi<0) return; const el=document.querySelector(`.card[data-idx="${fi}"]`); if(el) el.classList.add("sel"); }
+
+/* ============================ VIEWS ============================ */
+function goView(v){
+  cfg.view=v; saveCfg();
+  const dash=v==="dashboard";
+  document.getElementById("dashboard").style.display=dash?"grid":"none";
+  document.getElementById("board-wrap").style.display=dash?"none":"flex";
+  document.getElementById("detail").style.display=(!dash&&data)?"block":"none";
+  document.getElementById("tab-dash").classList.toggle("active",dash);
+  document.getElementById("tab-board").classList.toggle("active",!dash);
+  document.getElementById("controls").style.display=dash?"none":"flex";
+  if(!dash && !data){ document.getElementById("empty").style.display="flex"; document.getElementById("board").style.display="none"; }
+  if(dash) refreshDashboard();
+}
+
+/* ============================ DASHBOARD: CLOCK ============================ */
+function tickClock(){
+  const now=new Date();
+  const p=n=>String(n).padStart(2,"0");
+  document.getElementById("clock-time").textContent=p(now.getHours())+":"+p(now.getMinutes())+":"+p(now.getSeconds());
+  document.getElementById("clock-date").textContent=now.toLocaleDateString(undefined,{day:"2-digit",month:"long",year:"numeric"}).toUpperCase();
+  document.getElementById("clock-day").textContent=now.toLocaleDateString(undefined,{weekday:"long"}).toUpperCase();
+}
+
+/* ============================ DASHBOARD: WEATHER ============================ */
+const WMO={0:["Clear sky","☀"],1:["Mainly clear","🌤"],2:["Partly cloudy","⛅"],3:["Overcast","☁"],45:["Fog","🌫"],48:["Rime fog","🌫"],51:["Light drizzle","🌦"],53:["Drizzle","🌦"],55:["Dense drizzle","🌦"],61:["Light rain","🌧"],63:["Rain","🌧"],65:["Heavy rain","🌧"],71:["Light snow","🌨"],73:["Snow","🌨"],75:["Heavy snow","❄"],77:["Snow grains","🌨"],80:["Rain showers","🌦"],81:["Rain showers","🌧"],82:["Violent showers","⛈"],85:["Snow showers","🌨"],86:["Snow showers","🌨"],95:["Thunderstorm","⛈"],96:["Thunderstorm+hail","⛈"],99:["Thunderstorm+hail","⛈"]};
+async function loadWeather(){
+  if(cfg.lat==null||cfg.lon==null){ document.getElementById("w-sky").textContent="Set a city in Settings"; return; }
+  const u=cfg.units==="f"?"&temperature_unit=fahrenheit&wind_speed_unit=mph":"";
+  try{
+    const r=await fetch(`https://api.open-meteo.com/v1/forecast?latitude=${cfg.lat}&longitude=${cfg.lon}&current=temperature_2m,apparent_temperature,relative_humidity_2m,wind_speed_10m,weather_code${u}`);
+    const j=await r.json(); const c=j.current; const w=WMO[c.weather_code]||["—","•"];
+    const tu=cfg.units==="f"?"°F":"°C", su=cfg.units==="f"?"mph":"km/h";
+    document.getElementById("w-loc").textContent=cfg.city||`${cfg.lat.toFixed(2)}, ${cfg.lon.toFixed(2)}`;
+    document.getElementById("w-temp").textContent=`${w[1]} ${Math.round(c.temperature_2m)}${tu}`;
+    document.getElementById("w-sky").textContent=w[0];
+    document.getElementById("w-grid").innerHTML=
+      `<span>Feels <b>${Math.round(c.apparent_temperature)}${tu}</b></span><span>Humidity <b>${c.relative_humidity_2m}%</b></span>`+
+      `<span>Wind <b>${Math.round(c.wind_speed_10m)} ${su}</b></span><span>Updated <b>${new Date().toLocaleTimeString(undefined,{hour:"2-digit",minute:"2-digit"})}</b></span>`;
+  }catch(e){ document.getElementById("w-sky").textContent="Weather offline"; }
+}
+async function geocodeCity(name){
+  const r=await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=1`);
+  const j=await r.json(); if(!j.results||!j.results.length) throw new Error("City not found");
+  const g=j.results[0]; return {lat:g.latitude,lon:g.longitude,label:g.name+(g.country?", "+g.country:"")};
+}
+
+/* ============================ DASHBOARD: NEWS ============================ */
+function renderNewsCols(){
+  const wrap=document.getElementById("dash-news"); wrap.innerHTML="";
+  cfg.feeds.forEach((f,i)=>{
+    const col=document.createElement("div"); col.className="news-col";
+    col.innerHTML=`<div class="frame"><div class="news-head"><span>▣ ${esc(f.name)}</span><span class="status load" id="feedstat-${i}">…</span></div><div class="news-body" id="feedbody-${i}"><div class="news-item m">Loading…</div></div></div>`;
+    wrap.appendChild(col);
+  });
+}
+async function loadFeeds(){
+  renderNewsCols();
+  cfg.feeds.forEach((f,i)=>loadOneFeed(f,i));
+}
+async function loadOneFeed(f,i){
+  const stat=()=>document.getElementById("feedstat-"+i), body=()=>document.getElementById("feedbody-"+i);
+  try{
+    let items;
+    if(f.url==="hn"){ items=await loadHN(); }
+    else{
+      if(!cfg.proxy){ if(stat())stat().textContent="no proxy"; if(stat())stat().className="status err"; if(body())body().innerHTML=`<div class="news-item m">RSS needs a CORS proxy (Settings).</div>`; return; }
+      items=await loadRSS(cfg.proxy+encodeURIComponent(f.url));
+    }
+    if(stat()){ stat().textContent="online"; stat().className="status ok"; }
+    if(body()) body().innerHTML=items.slice(0,10).map(it=>
+      `<div class="news-item"><a class="t" href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}</a><div class="m">${esc(it.meta)}</div></div>`).join("")||`<div class="news-item m">No items.</div>`;
+  }catch(e){ if(stat()){ stat().textContent="offline"; stat().className="status err"; } if(body()) body().innerHTML=`<div class="news-item m">${esc(e.message||"failed")}</div>`; }
+}
+async function loadHN(){
+  const ids=await (await fetch("https://hacker-news.firebaseio.com/v0/topstories.json")).json();
+  const top=ids.slice(0,10);
+  const items=await Promise.all(top.map(async id=>{ const s=await (await fetch(`https://hacker-news.firebaseio.com/v0/item/${id}.json`)).json();
+    return {title:s.title,link:s.url||`https://news.ycombinator.com/item?id=${id}`,meta:`▲ ${s.score||0} · ${s.by||"?"} · ${ago(s.time*1000)}`}; }));
+  return items;
+}
+async function loadRSS(url){
+  const txt=await (await fetch(url)).text();
+  const doc=new DOMParser().parseFromString(txt,"text/xml");
+  let nodes=[...doc.querySelectorAll("item")]; if(!nodes.length) nodes=[...doc.querySelectorAll("entry")];
+  return nodes.map(n=>{ const g=s=>{ const el=n.querySelector(s); return el?el.textContent:""; };
+    let link=g("link"); const la=n.querySelector("link"); if(la&&la.getAttribute("href")) link=la.getAttribute("href");
+    const dt=g("pubDate")||g("updated")||g("published");
+    return {title:g("title")||"(untitled)",link:link||"#",meta:dt?ago(new Date(dt).getTime()):""}; });
+}
+function refreshDashboard(){ tickClock(); loadWeather(); loadFeeds(); }
+
+/* ============================ SETTINGS UI ============================ */
+function buildSettingsUI(){
+  const tl=document.getElementById("theme-list"); tl.innerHTML="";
+  THEMES.forEach(t=>{ const b=document.createElement("button"); b.className="swatch"; b.dataset.theme=t.id;
+    b.innerHTML=`<span class="dots">${t.dots.map(c=>`<i style="background:${c}"></i>`).join("")}</span><span>${t.name}</span>`;
+    b.onclick=()=>{ cfg.theme=t.id; applyTheme(); saveCfg(); syncSettingsUI(); }; tl.appendChild(b); });
+  document.querySelectorAll(".toggle[data-set]").forEach(btn=>{ btn.onclick=()=>{ const k=btn.dataset.set; cfg[k]=!cfg[k]; applyTheme(); saveCfg(); syncSettingsUI(); }; });
+  bindRange("rng-glow","glowStrength"); bindRange("rng-scan","scanDepth"); bindRange("rng-font","font"); bindRange("rng-radius","radius");
+  document.getElementById("sel-autoreload").onchange=e=>{ cfg.autoreload=+e.target.value; saveCfg(); startAuto(); };
+  document.getElementById("sel-units").onchange=e=>{ cfg.units=e.target.value; saveCfg(); loadWeather(); };
+  document.getElementById("btn-setloc").onclick=async()=>{ const name=(document.getElementById("inp-city").value||"").trim(); if(!name) return; try{ const g=await geocodeCity(name); cfg.city=g.label; cfg.lat=g.lat; cfg.lon=g.lon; saveCfg(); toast("Location: "+g.label,"ok"); loadWeather(); }catch(err){ toast(err.message,"err"); } };
+  document.getElementById("btn-geoloc").onclick=()=>{ if(!navigator.geolocation){ toast("Geolocation unavailable","err"); return; } navigator.geolocation.getCurrentPosition(p=>{ cfg.lat=p.coords.latitude; cfg.lon=p.coords.longitude; cfg.city=""; saveCfg(); toast("Using device location","ok"); loadWeather(); },()=>toast("Location denied","err")); };
+  document.getElementById("inp-proxy").onchange=e=>{ cfg.proxy=e.target.value.trim(); saveCfg(); if(cfg.view==="dashboard") loadFeeds(); };
+  document.getElementById("btn-addfeed").onclick=()=>{ cfg.feeds.push({name:"New feed",url:"https://"}); saveCfg(); renderFeedList(); };
+  renderFeedList();
+}
+function renderFeedList(){
+  const wrap=document.getElementById("feedlist"); wrap.innerHTML="";
+  cfg.feeds.forEach((f,i)=>{
+    const row=document.createElement("div"); row.className="feed";
+    row.innerHTML=`<input class="sel" style="width:90px" value="${esc(f.name)}" data-k="name" data-i="${i}"><input class="sel" value="${esc(f.url)}" data-k="url" data-i="${i}"><button data-del="${i}">✕</button>`;
+    wrap.appendChild(row);
+  });
+  wrap.querySelectorAll("input").forEach(inp=>inp.onchange=()=>{ cfg.feeds[+inp.dataset.i][inp.dataset.k]=inp.value; saveCfg(); if(cfg.view==="dashboard") loadFeeds(); });
+  wrap.querySelectorAll("button[data-del]").forEach(b=>b.onclick=()=>{ cfg.feeds.splice(+b.dataset.del,1); saveCfg(); renderFeedList(); if(cfg.view==="dashboard") loadFeeds(); });
+}
+function bindRange(id,key){ const el=document.getElementById(id); el.oninput=()=>{ cfg[key]=+el.value; applyTheme(); saveCfg(); }; }
+function syncSettingsUI(){
+  document.querySelectorAll(".swatch").forEach(s=>s.classList.toggle("active",s.dataset.theme===cfg.theme));
+  document.querySelectorAll(".toggle[data-set]").forEach(b=>{ const on=!!cfg[b.dataset.set]; b.dataset.on=on; b.textContent=on?"ON":"OFF"; });
+  set("rng-glow",cfg.glowStrength); set("rng-scan",cfg.scanDepth); set("rng-font",cfg.font); set("rng-radius",cfg.radius);
+  document.getElementById("sel-autoreload").value=String(cfg.autoreload);
+  document.getElementById("sel-units").value=cfg.units;
+  document.getElementById("inp-city").value=cfg.city||"";
+  document.getElementById("inp-proxy").value=cfg.proxy||"";
+  function set(id,v){ document.getElementById(id).value=v; }
+}
+function toggleSettings(force){ const s=document.getElementById("settings"); const show=force!==undefined?force:!s.classList.contains("show"); s.classList.toggle("show",show); if(show) syncSettingsUI(); }
+
+/* ============================ AUTO / HELPERS ============================ */
+function startAuto(){ if(autoTimer){ clearInterval(autoTimer); autoTimer=null; } if(cfg.autoreload>0&&fileHandle) autoTimer=setInterval(()=>reload(),cfg.autoreload*1000); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
+function setChip(id,label,val){ document.getElementById(id).innerHTML=`${label} <b>${esc(val)}</b>`; }
+function fmtTime(s){ if(!s) return "—"; const d=new Date(s); if(isNaN(d)) return s; return d.toLocaleString(undefined,{month:"short",day:"2-digit",hour:"2-digit",minute:"2-digit"}); }
+function ago(ms){ if(!ms) return ""; const s=(Date.now()-ms)/1000; if(s<3600) return Math.max(1,Math.round(s/60))+"m"; if(s<86400) return Math.round(s/3600)+"h"; return Math.round(s/86400)+"d"; }
+function liveLabel(kind){ const dot=document.getElementById("live-dot"),lab=document.getElementById("live-label");
+  lab.textContent=kind==="LIVE"?"LIVE · "+fileName:kind==="STATIC"?"STATIC · "+fileName:"NO FILE";
+  dot.style.color=kind==="LIVE"?"var(--success)":kind==="STATIC"?"var(--warning)":"var(--muted)"; }
+let toastT=null;
+function toast(msg,cls){ const m=document.getElementById("statusmsg"); m.textContent=msg; m.className="msg "+(cls||""); clearTimeout(toastT); toastT=setTimeout(()=>{ m.textContent="Ready."; m.className="msg"; },4500); }
+
+/* ============================ KEYBOARD ============================ */
+document.addEventListener("keydown",e=>{
+  const tag=(e.target.tagName||"").toLowerCase(); const typing=tag==="input"||tag==="select"||tag==="textarea";
+  if(e.key==="Escape"){ toggleSettings(false); if(typing) e.target.blur(); return; }
+  if(typing) return;
+  switch(e.key){
+    case "ArrowLeft": e.preventDefault(); if(cfg.view==="board") move(-1,0); break;
+    case "ArrowRight": e.preventDefault(); if(cfg.view==="board") move(1,0); break;
+    case "ArrowUp": e.preventDefault(); if(cfg.view==="board") move(0,-1); break;
+    case "ArrowDown": e.preventDefault(); if(cfg.view==="board") move(0,1); break;
+    case "d": case "D": goView("dashboard"); break;
+    case "t": goView("board"); break;
+    case "T": break;
+    case "l": case "L": pickFile(); break;
+    case "r": case "R": if(cfg.view==="dashboard") refreshDashboard(); else reload(); break;
+    case "s": case "S": toggleSettings(); break;
+    case "[": cycleTheme(-1); break;
+    case "]": cycleTheme(1); break;
+    case "g": if(cfg.view==="board") cycleSelect("sel-group"); break;
+    case "f": if(cfg.view==="board") cycleSelect("sel-filter"); break;
+    case "/": if(cfg.view==="board"){ e.preventDefault(); document.getElementById("inp-search").focus(); } break;
+  }
+});
+function cycleSelect(id){ const s=document.getElementById(id); s.selectedIndex=(s.selectedIndex+1)%s.options.length; s.dispatchEvent(new Event("change")); }
+
+/* ============================ WIRE UP ============================ */
+document.getElementById("btn-load").onclick=pickFile;
+document.getElementById("empty-load").onclick=pickFile;
+document.getElementById("btn-reload").onclick=reload;
+document.getElementById("btn-settings").onclick=()=>toggleSettings();
+document.getElementById("btn-close-settings").onclick=()=>toggleSettings(false);
+document.getElementById("file-input").addEventListener("change",onFileInput);
+document.getElementById("tab-dash").onclick=()=>goView("dashboard");
+document.getElementById("tab-board").onclick=()=>goView("board");
+document.getElementById("btn-weather").onclick=loadWeather;
+document.getElementById("sel-tag").onchange=e=>{ activeTag=e.target.value; cfg.savedTag=activeTag; saveCfg(); data=normalizeTaskmaster(tags[activeTag],raw); data.format="tagged"; populateFilterSelect(); build(); };
+document.getElementById("sel-group").onchange=e=>{ cfg.group=e.target.value; saveCfg(); if(data) build(); };
+document.getElementById("sel-filter").onchange=e=>{ cfg.filter=e.target.value; saveCfg(); if(data) build(); };
+document.getElementById("inp-search").oninput=()=>{ if(data) build(); };
+
+let dragN=0; const dz=document.getElementById("dropzone");
+window.addEventListener("dragenter",e=>{ e.preventDefault(); dragN++; dz.classList.add("show"); });
+window.addEventListener("dragover",e=>e.preventDefault());
+window.addEventListener("dragleave",e=>{ dragN--; if(dragN<=0) dz.classList.remove("show"); });
+window.addEventListener("drop",async e=>{
+  e.preventDefault(); dragN=0; dz.classList.remove("show");
+  const item=e.dataTransfer.items&&e.dataTransfer.items[0];
+  if(item&&item.getAsFileSystemHandle){ try{ const h=await item.getAsFileSystemHandle(); if(h&&h.kind==="file"){ fileHandle=h; fileName=h.name; const f=await h.getFile(); await ingest(await f.text()); liveLabel("LIVE"); startAuto(); return; } }catch(_){} }
+  const f=e.dataTransfer.files[0]; if(!f) return; fileHandle=null; fileName=f.name; const rd=new FileReader(); rd.onload=()=>{ ingest(rd.result); liveLabel("STATIC"); }; rd.readAsText(f);
+});
+
+/* ============================ INIT ============================ */
+document.getElementById("sel-group").value=cfg.group;
+applyTheme(); buildSettingsUI(); syncSettingsUI(); liveLabel("NONE");
+goView(cfg.view||"dashboard");
+tickClock(); clockTimer=setInterval(tickClock,1000);
+setInterval(()=>{ if(cfg.view==="dashboard"){ loadWeather(); loadFeeds(); } },15*60*1000);
+</script>
+</body>
+</html>

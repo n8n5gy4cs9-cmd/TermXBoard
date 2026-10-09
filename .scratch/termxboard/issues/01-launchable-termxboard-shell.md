@@ -6,7 +6,7 @@
 
 **Status:** done
 
-- [x] Dashboard starts in a modern macOS terminal; `?` shows help and `q` exits immediately.
+- [x] Dashboard starts in a modern macOS terminal; `h` shows help and `q` exits immediately.
 - [x] Terminals below 110×32 show the resize screen and recover automatically.
 - [x] Start and build commands fail clearly without prerequisites; build produces the executable under `dist/`.
 - [x] Core launch, input, and size-state behavior has automated tests.

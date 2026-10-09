@@ -83,3 +83,15 @@ fn dashboard_marks_failed_feed_and_keeps_cached_headline_visible() {
     assert!(output.contains("STALE"));
     assert!(red_leds >= 1);
 }
+
+#[test]
+fn dashboard_designs_loading_and_empty_news_states() {
+    let loading = NewsView::loading();
+    let (loading_output, _) = rendered(&loading);
+    assert!(loading_output.contains("LOADING"));
+    assert!(loading_output.contains('▰'));
+
+    let empty = NewsView::ready([vec![], vec![], vec![]]);
+    let (empty_output, _) = rendered(&empty);
+    assert_eq!(empty_output.matches("NO HEADLINES").count(), 3);
+}

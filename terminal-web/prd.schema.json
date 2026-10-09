@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://termxboard.local/prd.schema.json",
+  "title": "PRD tasks.json (Task-Master compatible)",
+  "description": "The widely-used AI-project task format produced from a PRD. Two shapes are accepted: legacy { tasks: [] } and tagged { <tag>: { tasks: [], metadata: {} } } (default tag 'master').",
+  "oneOf": [
+    { "$ref": "#/definitions/legacy" },
+    { "$ref": "#/definitions/tagged" }
+  ],
+  "definitions": {
+    "legacy": {
+      "type": "object",
+      "required": ["tasks"],
+      "properties": { "tasks": { "$ref": "#/definitions/taskArray" } }
+    },
+    "tagged": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "required": ["tasks"],
+        "properties": {
+          "tasks": { "$ref": "#/definitions/taskArray" },
+          "metadata": {
+            "type": "object",
+            "properties": {
+              "created": { "type": "string" },
+              "updated": { "type": "string" },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "taskArray": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/task" }
+    },
+    "task": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": { "type": ["integer", "string"] },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "details": { "type": "string" },
+        "testStrategy": { "type": "string" },
+        "status": { "enum": ["pending", "in-progress", "done", "review", "deferred", "cancelled"] },
+        "priority": { "type": "string", "description": "e.g. high | medium | low" },
+        "dependencies": { "type": "array", "items": { "type": ["integer", "string"] } },
+        "affectedAssets": { "type": "array", "items": { "type": "string" } },
+        "subtasks": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/task" }
+        }
+      }
+    }
+  }
+}
