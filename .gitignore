@@ -1,3 +1,4 @@
 /target/
 /dist/TermXBoard
 .DS_Store
+dist
