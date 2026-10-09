@@ -1,0 +1,192 @@
+use std::{
+    fs,
+    path::PathBuf,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use termxboard::progress::{TaskStatus, load_progress_file};
+
+fn temp_dir(name: &str) -> PathBuf {
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("clock")
+        .as_nanos();
+    std::env::temp_dir().join(format!("termxboard-taskmaster-{name}-{nonce}"))
+}
+
+fn tagged_tasks_json() -> &'static str {
+    r#"{
+      "master": {
+        "tasks": [
+          {
+            "id": 1,
+            "title": "Set up scaffold",
+            "description": "Bootstrap the project.",
+            "details": "Init repo and CI.",
+            "testStrategy": "CI passes.",
+            "status": "done",
+            "priority": "high",
+            "dependencies": [],
+            "subtasks": [
+              { "id": 1, "title": "Init repo", "status": "done", "dependencies": [] },
+              { "id": 2, "title": "Add CI", "status": "done", "dependencies": [1] }
+            ]
+          },
+          {
+            "id": 2,
+            "title": "Vertical slice",
+            "description": "Thin tracer bullet.",
+            "status": "in-progress",
+            "priority": "high",
+            "dependencies": [1],
+            "subtasks": []
+          },
+          {
+            "id": 3,
+            "title": "List and filter",
+            "description": "Read path.",
+            "status": "review",
+            "priority": "medium",
+            "dependencies": [2],
+            "subtasks": []
+          },
+          {
+            "id": 4,
+            "title": "Auth hardening",
+            "description": "Deferred until MVP.",
+            "status": "deferred",
+            "priority": "low",
+            "dependencies": [2],
+            "subtasks": []
+          },
+          {
+            "id": 5,
+            "title": "Legacy import",
+            "description": "Dropped from scope.",
+            "status": "cancelled",
+            "priority": "low",
+            "dependencies": [],
+            "subtasks": []
+          }
+        ],
+        "metadata": {
+          "updated": "2026-08-11T09:00:00Z",
+          "description": "demo-project"
+        }
+      }
+    }"#
+}
+
+fn legacy_tasks_json() -> &'static str {
+    r#"{
+      "tasks": [
+        { "id": "T-1", "title": "Foundation", "status": "done", "dependencies": [], "subtasks": [] },
+        { "id": "T-2", "title": "Dashboard", "status": "in-progress", "dependencies": ["T-1"], "subtasks": [] },
+        { "id": "T-3", "title": "Pending task", "status": "pending", "dependencies": ["T-2"], "subtasks": [] }
+      ]
+    }"#
+}
+
+fn schema_tagged_tasks_json() -> &'static str {
+    r#"{
+      "$schema": "./prd.schema.json",
+      "master": {
+        "tasks": [
+          { "id": 1, "title": "First", "status": "done", "dependencies": [], "subtasks": [] }
+        ]
+      }
+    }"#
+}
+
+#[test]
+fn tagged_task_master_loads_and_maps_statuses() {
+    let dir = temp_dir("tagged");
+    fs::create_dir_all(&dir).expect("temp directory");
+    fs::write(dir.join("tasks.json"), tagged_tasks_json()).expect("fixture");
+
+    let loaded = load_progress_file("tasks.json", &dir).expect("tagged task-master");
+
+    assert_eq!(loaded.project.project.as_deref(), Some("demo-project"));
+    assert_eq!(loaded.project.updated_at.as_deref(), Some("2026-08-11T09:00:00Z"));
+
+    let tasks = &loaded.project.tasks;
+
+    // 5 top-level tasks + 2 subtasks of task 1 = 7 tasks total
+    assert_eq!(tasks.len(), 7);
+
+    // Top-level task 1: done
+    let t1 = tasks.iter().find(|t| t.id == "1").expect("task 1");
+    assert_eq!(t1.status, TaskStatus::Done);
+
+    // Top-level task 2: in-progress → should be current
+    let t2 = tasks.iter().find(|t| t.id == "2").expect("task 2");
+    assert_eq!(t2.status, TaskStatus::InProgress);
+    assert_eq!(loaded.project.current_task.as_deref(), Some("2"));
+
+    // Top-level task 3: review → awaiting-review
+    let t3 = tasks.iter().find(|t| t.id == "3").expect("task 3");
+    assert_eq!(t3.status, TaskStatus::AwaitingReview);
+
+    // Top-level task 4: deferred → todo with stored-status note
+    let t4 = tasks.iter().find(|t| t.id == "4").expect("task 4");
+    assert_eq!(t4.status, TaskStatus::Todo);
+    assert!(t4.notes.as_deref().unwrap_or("").contains("Stored status: deferred"));
+
+    // Top-level task 5: cancelled → done with stored-status note
+    let t5 = tasks.iter().find(|t| t.id == "5").expect("task 5");
+    assert_eq!(t5.status, TaskStatus::Done);
+    assert!(t5.notes.as_deref().unwrap_or("").contains("Stored status: cancelled"));
+
+    // Subtask of task 1: id "1.1"
+    let sub1 = tasks.iter().find(|t| t.id == "1.1").expect("subtask 1.1");
+    assert_eq!(sub1.status, TaskStatus::Done);
+    assert!(sub1.notes.as_deref().unwrap_or("").contains("Subtask of: 1"));
+
+    // Second subtask: id "1.2", depends on subtask id 1 (remapped to "1")
+    let sub2 = tasks.iter().find(|t| t.id == "1.2").expect("subtask 1.2");
+    assert_eq!(sub2.status, TaskStatus::Done);
+    assert_eq!(sub2.depends_on, vec!["1".to_string()]);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn legacy_task_master_with_string_ids_and_pending_status_loads() {
+    let dir = temp_dir("legacy");
+    fs::create_dir_all(&dir).expect("temp directory");
+    fs::write(dir.join("tasks.json"), legacy_tasks_json()).expect("fixture");
+
+    let loaded = load_progress_file("tasks.json", &dir).expect("legacy task-master");
+
+    let tasks = &loaded.project.tasks;
+    assert_eq!(tasks.len(), 3);
+
+    let t1 = tasks.iter().find(|t| t.id == "T-1").expect("T-1");
+    assert_eq!(t1.status, TaskStatus::Done);
+
+    let t2 = tasks.iter().find(|t| t.id == "T-2").expect("T-2");
+    assert_eq!(t2.status, TaskStatus::InProgress);
+    assert_eq!(t2.depends_on, vec!["T-1".to_string()]);
+
+    // pending → todo
+    let t3 = tasks.iter().find(|t| t.id == "T-3").expect("T-3");
+    assert_eq!(t3.status, TaskStatus::Todo);
+
+    let _ = fs::remove_dir_all(dir);
+}
+
+#[test]
+fn schema_reference_identifies_task_master_format() {
+    let dir = temp_dir("schema");
+    fs::create_dir_all(&dir).expect("temp directory");
+    fs::write(dir.join("tasks.json"), schema_tagged_tasks_json()).expect("fixture");
+
+    let loaded = load_progress_file("tasks.json", &dir).expect("schema-tagged task-master");
+
+    let tasks = &loaded.project.tasks;
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0].id, "1");
+    assert_eq!(tasks[0].status, TaskStatus::Done);
+
+    let _ = fs::remove_dir_all(dir);
+}

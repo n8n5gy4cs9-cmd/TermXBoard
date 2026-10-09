@@ -38,6 +38,7 @@ fn preferences_survive_restart() {
         theme: Theme::Nord,
         reduced_motion: true,
         visual_mode: VisualMode::NerdFont,
+        task_sound: false,
         remembered_project: Some(PathBuf::from("/tmp/project/progress.json")),
     };
 

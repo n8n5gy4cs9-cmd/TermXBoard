@@ -87,6 +87,7 @@ impl SettingsField {
 #[derive(Debug, PartialEq, Eq)]
 pub struct AppState {
     help_visible: bool,
+    schema_help_visible: bool,
     settings_visible: bool,
     settings_field: SettingsField,
     preferences: preferences::Preferences,
@@ -112,6 +113,7 @@ impl AppState {
             first_run,
             warning,
             help_visible: false,
+            schema_help_visible: false,
             settings_visible: false,
             settings_field: SettingsField::City,
             preferences_changed: false,
@@ -120,6 +122,10 @@ impl AppState {
             weather_refresh_requested: false,
             view: AppView::Dashboard,
         }
+    }
+
+    pub fn is_schema_help_visible(&self) -> bool {
+        self.schema_help_visible
     }
 
     pub fn is_help_visible(&self) -> bool {
@@ -272,12 +278,20 @@ impl AppState {
         match key {
             KeyCommand::Character('h') => {
                 self.help_visible = !self.help_visible;
+                self.schema_help_visible = false;
+                self.settings_visible = false;
+                AppAction::Continue
+            }
+            KeyCommand::Character('?') => {
+                self.schema_help_visible = !self.schema_help_visible;
+                self.help_visible = false;
                 self.settings_visible = false;
                 AppAction::Continue
             }
             KeyCommand::Character('s') => {
                 self.settings_visible = !self.settings_visible;
                 self.help_visible = false;
+                self.schema_help_visible = false;
                 AppAction::Continue
             }
             KeyCommand::Character('w') => {
@@ -290,6 +304,7 @@ impl AppState {
             }
             KeyCommand::Escape => {
                 self.help_visible = false;
+                self.schema_help_visible = false;
                 self.settings_visible = false;
                 AppAction::Continue
             }

@@ -229,15 +229,82 @@ SOURCE ralph.sh:
 <PASTE THE EXISTING SCRIPT HERE>
 ```
 
-## Alternative input: PRD Files
+## Alternative input: Task-Master compatible tasks.json
 
-TermXBoard also reads a PRD File (the `prd.schema.json` shape) from the same
-load prompt — no flag, no separate command. Point the loader at it exactly as
-you would at a `progress.json`.
+TermXBoard reads files in the Task-Master format (the shape described in
+`prd.schema.json`) from the same load prompt — no flag needed. Point the loader
+at the file exactly as you would at a `progress.json`.
 
-A file is treated as a PRD when any of these hold:
+Two shapes are supported:
+
+**Tagged** (the common shape, used by Task-Master):
+
+```json
+{
+  "master": {
+    "tasks": [
+      { "id": 1, "title": "Bootstrap", "status": "done", "dependencies": [], "subtasks": [] }
+    ],
+    "metadata": { "updated": "2026-08-01T09:00:00Z", "description": "my-project" }
+  }
+}
+```
+
+**Legacy** (flat root array, useful for simple lists):
+
+```json
+{
+  "tasks": [
+    { "id": "T-1", "title": "Setup", "status": "done", "dependencies": [], "subtasks": [] }
+  ]
+}
+```
+
+A file is treated as Task-Master when **any** of these hold:
 
 - `$schema` ends with `prd.schema.json`
+- the root has no `tasks` key but contains a value with a `tasks` array (tagged shape)
+- the first task has an integer `id`
+- the first task has a `dependencies`, `subtasks`, or `testStrategy` field
+- the first task's `status` is `pending`, `review`, `deferred`, or `cancelled`
+
+### Task-Master status mapping
+
+| Task-Master value | TermXBoard label | Notes |
+|---|---|---|
+| `pending` | Undone | |
+| `in-progress` | WIP | |
+| `done` | Done | |
+| `review` | User Review | |
+| `deferred` | Undone | `notes` records `Stored status: deferred` |
+| `cancelled` | Done | `notes` records `Stored status: cancelled` |
+
+### Task-Master field mapping
+
+| Task-Master | TermXBoard |
+|---|---|
+| `id` (int or string) | `id` as string |
+| `title` | `title` |
+| `description` | `scopeNote` |
+| `details`, `testStrategy`, `priority` | folded into `notes` |
+| `status` | mapped status (see above) |
+| `dependencies` | `dependsOn` (ids coerced to string) |
+| `affectedAssets` | `filesChanged` |
+| `subtasks` | flattened as tasks with id `<parent>.<sub>` |
+| `metadata.updated` | `updatedAt` |
+| `metadata.description` | project `project` name |
+
+The first `in-progress` task becomes `currentTask`. Task-Master files carry no
+milestone or phase, so those facets are empty.
+
+## Alternative input: Classic PRD Files
+
+TermXBoard also reads a classic PRD File from the same load prompt — no flag,
+no separate command. Point the loader at it exactly as you would at a
+`progress.json`.
+
+A file is treated as a classic PRD when any of these hold:
+
 - the root has `goal`, `non_goals`, or `stack`
 - the first Task has `acceptance`, `paths`, or `verify`
 

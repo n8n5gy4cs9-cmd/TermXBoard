@@ -610,8 +610,10 @@ pub fn render_application_at(
             colors,
         );
     }
-    if app.is_help_visible() {
-        render_help(frame, centered_rect(58, 18, area), visual_mode, colors);
+    if app.is_schema_help_visible() {
+        render_schema_help(frame, centered_rect(72, 30, area), visual_mode, colors);
+    } else if app.is_help_visible() {
+        render_help(frame, centered_rect(58, 20, area), visual_mode, colors);
     } else if app.is_first_run() {
         render_first_run(frame, centered_rect(68, 12, area), app, colors);
     } else if app.is_settings_visible() {
@@ -1566,6 +1568,15 @@ fn render_load_menu(
             )),
             Line::from(""),
             Line::from("Relative or absolute path  //  Enter load  Esc cancel"),
+            Line::from(""),
+            Line::from(Span::styled(
+                "Formats: progress.json  tasks.json (Task-Master)  PRD  user-story PRD",
+                Style::default().fg(colors.dim),
+            )),
+            Line::from(Span::styled(
+                "Press ? for format guide",
+                Style::default().fg(colors.dim),
+            )),
         ],
     };
     frame.render_widget(
@@ -1794,6 +1805,7 @@ fn render_help(frame: &mut Frame, area: Rect, visual_mode: VisualMode, colors: P
         Line::from(Span::styled("KEYBOARD CONTROL", bold(colors.primary))),
         Line::from(""),
         key_line("h", "Toggle this help", colors),
+        key_line("?", "Supported file formats guide", colors),
         key_line("s", "Toggle Settings", colors),
         key_line("w", "Refresh weather", colors),
         key_line("n", "Refresh news", colors),
@@ -1817,6 +1829,43 @@ fn render_help(frame: &mut Frame, area: Rect, visual_mode: VisualMode, colors: P
     ])
     .alignment(Alignment::Center)
     .block(bordered(colors.accent).title(" HELP // H TO CLOSE "));
+    frame.render_widget(help, area);
+}
+
+fn render_schema_help(frame: &mut Frame, area: Rect, _visual_mode: VisualMode, colors: Palette) {
+    frame.render_widget(Clear, area);
+    let dim = Style::default().fg(colors.dim);
+    let accent = Style::default().fg(colors.accent);
+    let primary = Style::default().fg(colors.primary);
+    let help = Paragraph::new(vec![
+        Line::from(Span::styled("SUPPORTED FILE FORMATS", bold(colors.primary))),
+        Line::from(""),
+        Line::from(Span::styled("── progress.json  (native TermXBoard format)", primary)),
+        Line::from(Span::styled(r#"  { "tasks": [ { "id": "T-1", "status": "todo" } ] }"#, accent)),
+        Line::from(Span::styled("  status: blocked | in-progress | awaiting-review | todo | done", dim)),
+        Line::from(""),
+        Line::from(Span::styled("── tasks.json  (Task-Master compatible)", primary)),
+        Line::from(Span::styled(r#"  { "master": { "tasks": [ { "id": 1, "status": "done" } ] } }"#, accent)),
+        Line::from(Span::styled("  status: pending | in-progress | done | review | deferred | cancelled", dim)),
+        Line::from(Span::styled("  Integer or string ids. Subtasks flattened to parent.N.", dim)),
+        Line::from(Span::styled("  Or legacy: { \"tasks\": [...] } without a top-level tag.", dim)),
+        Line::from(Span::styled("  Add \"$schema\": \"./prd.schema.json\" to force recognition.", dim)),
+        Line::from(""),
+        Line::from(Span::styled("── Classic PRD  (goal / tasks / acceptance)", primary)),
+        Line::from(Span::styled(r#"  { "goal": "...", "tasks": [ { "id": "P1", "status": "done", "acceptance": [] } ] }"#, accent)),
+        Line::from(Span::styled("  status: todo | in-progress | done | blocked | error", dim)),
+        Line::from(""),
+        Line::from(Span::styled("── User-Story PRD  (userStories array)", primary)),
+        Line::from(Span::styled(r#"  { "userStories": [ { "id": "S1", "status": "done" } ] }"#, accent)),
+        Line::from(Span::styled("  status: todo | in_progress | done | blocked | error", dim)),
+        Line::from(""),
+        Line::from(Span::styled("All formats auto-detected; no flag needed.", dim)),
+        Line::from(Span::styled("Load any file with  l  then enter its path.", dim)),
+        Line::from(""),
+        Line::from(Span::styled("? to close", dim)),
+    ])
+    .wrap(Wrap { trim: false })
+    .block(bordered(colors.accent).title(" FILE FORMAT GUIDE // ? TO CLOSE "));
     frame.render_widget(help, area);
 }
 

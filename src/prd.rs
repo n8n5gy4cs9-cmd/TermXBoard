@@ -102,13 +102,6 @@ pub fn looks_like_prd(contents: &str) -> bool {
     let Some(root) = document.as_object() else {
         return false;
     };
-    if root
-        .get("$schema")
-        .and_then(serde_json::Value::as_str)
-        .is_some_and(|schema| schema.ends_with("prd.schema.json"))
-    {
-        return true;
-    }
     if root.contains_key("goal") || root.contains_key("non_goals") || root.contains_key("stack") {
         return true;
     }
@@ -429,4 +422,278 @@ fn evidence_summary(entry: &UserStoryEvidence) -> serde_json::Value {
         map.insert("artifact".to_string(), serde_json::json!(artifact));
     }
     serde_json::Value::Object(map)
+}
+
+// ── Task-Master format ────────────────────────────────────────────────────────
+//
+// Two shapes are supported:
+//   legacy  { "tasks": [...] }
+//   tagged  { "<tag>": { "tasks": [...], "metadata": {} } }
+//
+// Status mapping: pending/deferred → todo, in-progress → in-progress,
+//                 done → done, review → awaiting-review, cancelled → done
+// Integer IDs are coerced to strings. Subtasks are flattened with
+// composite IDs ("<parent>.<sub>") so they appear in the task board.
+
+/// Status values used by Task-Master compatible task files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TaskMasterStatus {
+    Pending,
+    InProgress,
+    Done,
+    Review,
+    Deferred,
+    Cancelled,
+}
+
+impl TaskMasterStatus {
+    pub const fn as_task_status(self) -> TaskStatus {
+        match self {
+            Self::Pending | Self::Deferred => TaskStatus::Todo,
+            Self::InProgress => TaskStatus::InProgress,
+            Self::Done | Self::Cancelled => TaskStatus::Done,
+            Self::Review => TaskStatus::AwaitingReview,
+        }
+    }
+
+    pub const fn stored_label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::InProgress => "in-progress",
+            Self::Done => "done",
+            Self::Review => "review",
+            Self::Deferred => "deferred",
+            Self::Cancelled => "cancelled",
+        }
+    }
+
+    /// Returns true for terminal-but-not-done statuses that need a note.
+    pub const fn needs_status_note(self) -> bool {
+        matches!(self, Self::Deferred | Self::Cancelled)
+    }
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TaskMasterTask {
+    pub id: serde_json::Value,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub details: Option<String>,
+    pub test_strategy: Option<String>,
+    pub status: Option<TaskMasterStatus>,
+    pub priority: Option<String>,
+    #[serde(default)]
+    pub dependencies: Vec<serde_json::Value>,
+    #[serde(default)]
+    pub affected_assets: Vec<String>,
+    #[serde(default)]
+    pub subtasks: Vec<TaskMasterTask>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskMasterMetadata {
+    pub updated: Option<String>,
+    pub description: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct TaskMasterSection {
+    pub tasks: Vec<TaskMasterTask>,
+    pub metadata: Option<TaskMasterMetadata>,
+}
+
+/// Normalises a Task-Master ID (integer or string) to a stable string.
+fn tm_id(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::String(s) => s.clone(),
+        other => other.to_string(),
+    }
+}
+
+/// Reports whether the document matches the Task-Master tasks.json shape
+/// (legacy `{ tasks: [] }` or tagged `{ <tag>: { tasks: [] } }`).
+pub fn looks_like_task_master(contents: &str) -> bool {
+    let Ok(document) = serde_json::from_str::<serde_json::Value>(contents) else {
+        return false;
+    };
+    let Some(root) = document.as_object() else {
+        return false;
+    };
+
+    // Explicit schema reference to the Task-Master schema file.
+    if root
+        .get("$schema")
+        .and_then(serde_json::Value::as_str)
+        .is_some_and(|s| s.ends_with("prd.schema.json"))
+    {
+        return true;
+    }
+
+    // Tagged shape: no top-level "tasks" key, but at least one value is an
+    // object that itself has a "tasks" array.
+    if !root.contains_key("tasks") && !root.contains_key("userStories") {
+        let tagged = root.values().any(|v| {
+            v.as_object()
+                .and_then(|obj| obj.get("tasks"))
+                .and_then(serde_json::Value::as_array)
+                .is_some()
+        });
+        if tagged {
+            return true;
+        }
+    }
+
+    // Legacy shape: has top-level "tasks" with Task-Master markers.
+    if let Some(first_task) = root
+        .get("tasks")
+        .and_then(serde_json::Value::as_array)
+        .and_then(|a| a.first())
+        .and_then(serde_json::Value::as_object)
+    {
+        if first_task
+            .get("id")
+            .is_some_and(|v| v.is_number())
+        {
+            return true;
+        }
+        if first_task.contains_key("dependencies")
+            || first_task.contains_key("subtasks")
+            || first_task.contains_key("testStrategy")
+        {
+            return true;
+        }
+        if first_task
+            .get("status")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|s| matches!(s, "pending" | "review" | "deferred" | "cancelled"))
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+/// Parses a Task-Master tasks.json into the Progress File model.
+pub fn parse_task_master(contents: &str) -> Result<Project, serde_json::Error> {
+    let document: serde_json::Value = serde_json::from_str(contents)?;
+    let root = document.as_object().unwrap();
+
+    // Detect shape.
+    let (tasks, metadata) = if root.contains_key("tasks") {
+        // Legacy: { tasks: [...] }
+        let tasks: Vec<TaskMasterTask> =
+            serde_json::from_value(root["tasks"].clone())?;
+        (tasks, None)
+    } else {
+        // Tagged: { "<tag>": { tasks: [...], metadata: {} } }
+        // Use whichever tag comes first (usually "master").
+        let section_value = root
+            .values()
+            .find(|v| {
+                v.as_object()
+                    .and_then(|o| o.get("tasks"))
+                    .and_then(serde_json::Value::as_array)
+                    .is_some()
+            })
+            .cloned()
+            .unwrap_or(serde_json::Value::Null);
+        let section: TaskMasterSection = serde_json::from_value(section_value)?;
+        let meta = section.metadata.clone();
+        (section.tasks, meta)
+    };
+
+    // Collect all tasks (top-level + flattened subtasks).
+    let mut project_tasks: Vec<ProjectTask> = Vec::new();
+    let mut current_task: Option<String> = None;
+    let mut updated_at: Option<String> = metadata.as_ref().and_then(|m| m.updated.clone());
+    let project_name: Option<String> =
+        metadata.as_ref().and_then(|m| m.description.clone());
+
+    for task in &tasks {
+        let task_id = tm_id(&task.id);
+        let dep_ids: Vec<String> = task.dependencies.iter().map(tm_id).collect();
+        let pt = tm_task_to_project_task(task, &task_id, dep_ids, None);
+
+        // Track first in-progress task as current.
+        if current_task.is_none() && pt.status == TaskStatus::InProgress {
+            current_task = Some(task_id.clone());
+        }
+        if let Some(ts) = &pt.verified_at {
+            if updated_at.is_none() {
+                updated_at = Some(ts.clone());
+            }
+        }
+        project_tasks.push(pt);
+
+        // Flatten subtasks.
+        for sub in &task.subtasks {
+            let sub_id = format!("{task_id}.{}", tm_id(&sub.id));
+            let sub_deps: Vec<String> = sub.dependencies.iter().map(tm_id).collect();
+            let sub_pt = tm_task_to_project_task(sub, &sub_id, sub_deps, Some(&task_id));
+            project_tasks.push(sub_pt);
+        }
+    }
+
+    Ok(Project {
+        project: project_name,
+        version: None,
+        updated_at,
+        current_task,
+        current_phase: None,
+        verify_command: None,
+        definition_of_done: Vec::new(),
+        milestones: Vec::new(),
+        tasks: project_tasks,
+        follow_ups: Vec::new(),
+        notes: Vec::new(),
+    })
+}
+
+fn tm_task_to_project_task(
+    task: &TaskMasterTask,
+    id: &str,
+    dep_ids: Vec<String>,
+    parent_id: Option<&str>,
+) -> ProjectTask {
+    let status = task
+        .status
+        .unwrap_or(TaskMasterStatus::Pending)
+        .as_task_status();
+
+    let mut notes_parts: Vec<String> = Vec::new();
+    if let Some(stored) = task.status.filter(|s| s.needs_status_note()) {
+        notes_parts.push(format!("Stored status: {}", stored.stored_label()));
+    }
+    if let Some(details) = trimmed(task.details.as_deref()) {
+        notes_parts.push(details.to_string());
+    }
+    if let Some(strategy) = trimmed(task.test_strategy.as_deref()) {
+        notes_parts.push(format!("Test strategy: {strategy}"));
+    }
+    if let Some(priority) = trimmed(task.priority.as_deref()) {
+        notes_parts.push(format!("Priority: {priority}"));
+    }
+    if let Some(parent) = parent_id {
+        notes_parts.push(format!("Subtask of: {parent}"));
+    }
+    let notes = (!notes_parts.is_empty()).then(|| notes_parts.join(" | "));
+
+    ProjectTask {
+        id: id.to_string(),
+        title: task.title.clone(),
+        status,
+        milestone: None,
+        phase: None,
+        mode: None,
+        depends_on: dep_ids,
+        scope_note: task.description.clone(),
+        files_changed: task.affected_assets.clone(),
+        notes,
+        verified_at: None,
+        verification: None,
+    }
 }

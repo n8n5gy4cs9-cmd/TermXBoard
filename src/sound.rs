@@ -4,7 +4,9 @@
 //! through the operating system's audio device rather than the terminal bell,
 //! so it stays audible while another application holds focus.
 
-use std::process::{Child, Command, Stdio};
+use std::process::Child;
+#[cfg(target_os = "macos")]
+use std::process::{Command, Stdio};
 
 /// Plays the Task change bleep.
 pub trait Bleeper {

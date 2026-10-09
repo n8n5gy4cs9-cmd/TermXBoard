@@ -122,11 +122,15 @@ pub fn load_progress_file(
     Ok(LoadedProject { path, project })
 }
 
-/// Reads a native Progress File, a classic PRD File, or a user-story PRD File
-/// into the Project model.
+/// Reads a native Progress File, a classic PRD File, a user-story PRD File,
+/// or a Task-Master compatible tasks.json into the Project model.
 fn parse_project_document(contents: &str, resolved: &Path) -> Result<Project, String> {
     if crate::prd::looks_like_user_story_prd(contents) {
         return crate::prd::parse_user_story_prd(contents)
+            .map_err(|error| describe_parse_error(&error, resolved));
+    }
+    if crate::prd::looks_like_task_master(contents) {
+        return crate::prd::parse_task_master(contents)
             .map_err(|error| describe_parse_error(&error, resolved));
     }
     if crate::prd::looks_like_prd(contents) {
